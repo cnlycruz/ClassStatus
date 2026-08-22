@@ -1,0 +1,45 @@
+{
+  "name": "classstatus-ncr",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "collect": "tsx src/collector/cli.ts",
+    "admin:hash-password": "node scripts/hash-admin-password.mjs"
+  },
+  "dependencies": {
+    "argon2": "^0.45.1",
+    "cheerio": "^1.0.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.475.0",
+    "next": "^15.1.7",
+    "proper-lockfile": "^4.1.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.0.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/proper-lockfile": "^4.1.4",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.20.1",
+    "eslint-config-next": "^15.1.7",
+    "postcss": "8.5.26",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  },
+  "overrides": {
+    "postcss": "$postcss",
+    "sharp": "0.35.3"
+  }
+}

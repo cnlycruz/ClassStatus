@@ -24,6 +24,39 @@ interface NcrInteractiveMapProps {
   statusFilter?: string | null;
 }
 
+type MapLabelPlacement = {
+  x: number;
+  y: number;
+  fontSize: number;
+  textAnchor: "start" | "middle" | "end";
+  text?: string;
+  lines?: string[];
+};
+
+// Visual interior anchors, chosen from each path's largest usable interior
+// area and then optically centered for the rendered overview. Keeping this
+// separate from the geographic data prevents label refinement from altering
+// the underlying LGU boundaries.
+const MAP_LABEL_PLACEMENTS: Record<string, MapLabelPlacement> = {
+  manila: { x: 344, y: 449, fontSize: 16, textAnchor: "middle", text: "Manila" },
+  mandaluyong: { x: 439, y: 476, fontSize: 12, textAnchor: "middle" },
+  marikina: { x: 588, y: 323, fontSize: 16, textAnchor: "middle" },
+  pasig: { x: 522, y: 493, fontSize: 16, textAnchor: "middle" },
+  "quezon-city": { x: 468, y: 278, fontSize: 17, textAnchor: "middle" },
+  "san-juan": { x: 422, y: 430, fontSize: 12, textAnchor: "middle" },
+  "caloocan-north": { x: 456, y: 108, fontSize: 14, textAnchor: "middle", lines: ["Caloocan", "(North)"] },
+  "caloocan-south": { x: 307, y: 332, fontSize: 11, textAnchor: "middle", lines: ["Caloocan", "(South)"] },
+  malabon: { x: 258, y: 272, fontSize: 12, textAnchor: "middle" },
+  navotas: { x: 185, y: 225, fontSize: 11, textAnchor: "middle" },
+  valenzuela: { x: 317, y: 226, fontSize: 16, textAnchor: "middle" },
+  "las-pinas": { x: 361, y: 780, fontSize: 14, textAnchor: "middle" },
+  makati: { x: 411, y: 534, fontSize: 14, textAnchor: "middle" },
+  muntinlupa: { x: 422, y: 869, fontSize: 14, textAnchor: "middle" },
+  paranaque: { x: 403, y: 686, fontSize: 14, textAnchor: "middle" },
+  pasay: { x: 390, y: 605, fontSize: 13, textAnchor: "middle" },
+  taguig: { x: 470, y: 611, fontSize: 16, textAnchor: "middle" },
+  pateros: { x: 503, y: 546, fontSize: 10, textAnchor: "middle" },
+};
 export function NcrInteractiveMap({
   lgus,
   selectedLguId,
@@ -38,6 +71,7 @@ export function NcrInteractiveMap({
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const labelFontScale = 1 / Math.min(Math.max(scale, 0.7), 4);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   // Touch tracking for pinch-to-zoom
@@ -384,9 +418,18 @@ export function NcrInteractiveMap({
             const lguData = lguMap.get(pathItem.lguId);
             const isSelected = selectedLguId === pathItem.lguId;
             const isHovered = hoveredLguId === pathItem.lguId;
+            const placement = MAP_LABEL_PLACEMENTS[pathItem.id] || {
+              x: pathItem.labelX,
+              y: pathItem.labelY,
+              fontSize: 14,
+              textAnchor: "middle" as const,
+            };
             const displayName = pathItem.subArea
               ? `${lguData?.name || pathItem.name} (${pathItem.subArea})`
               : lguData?.name || pathItem.name;
+            const labelLines = placement.lines || [placement.text || displayName];
+            const lineHeight = placement.fontSize * 0.9;
+            const labelStartY = placement.y - ((labelLines.length - 1) * lineHeight) / 2;
 
             return (
               <g
@@ -396,36 +439,31 @@ export function NcrInteractiveMap({
                   onSelectLgu(pathItem.lguId);
                 }}
               >
-                {/* Text Halo for Maximum Readability */}
-                <text
-                  x={pathItem.labelX}
-                  y={pathItem.labelY}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  stroke="#0F172A"
-                  strokeWidth="3.5"
-                  strokeLinejoin="round"
-                  className="select-none font-bold tracking-tight text-[11px] opacity-90"
-                >
-                  {displayName}
-                </text>
-
-                {/* Primary Text Fill */}
-                <text
-                  x={pathItem.labelX}
-                  y={pathItem.labelY}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  className={`select-none text-[11px] font-bold tracking-tight transition-all ${
-                    isSelected ? "fill-blue-200" : isHovered ? "fill-white" : "fill-slate-100"
-                  }`}
-                  style={{
-                    fontSize: isSelected || isHovered ? "11.5px" : "11px",
-                    fontWeight: isSelected || isHovered ? "800" : "700",
-                  }}
-                >
-                  {displayName}
-                </text>
+                <g>
+                  <text
+                    x={placement.x}
+                    y={placement.y}
+                    textAnchor={placement.textAnchor}
+                    dominantBaseline="middle"
+                    stroke="#0F172A"
+                    strokeWidth={Math.min(Math.max(placement.fontSize * 0.18, 1.4), 2.3)}
+                    strokeLinejoin="round"
+                    paintOrder="stroke"
+                    className={`select-none font-bold tracking-tight transition-colors ${
+                      isSelected ? "fill-blue-200" : isHovered ? "fill-white" : "fill-slate-100"
+                    }`}
+                    style={{
+                      fontSize: `${Math.min(24, Math.max(2.5, (placement.fontSize + (isSelected || isHovered ? 0.5 : 0)) * labelFontScale))}px`,
+                      fontWeight: isSelected || isHovered ? "800" : "700",
+                    }}
+                  >
+                    {labelLines.map((line, index) => (
+                      <tspan key={line} x={placement.x} y={index === 0 ? labelStartY : undefined} dy={index === 0 ? undefined : lineHeight}>
+                        {line}
+                      </tspan>
+                    ))}
+                  </text>
+                </g>
 
                 {/* Upcoming Notice Indicator Pulse */}
                 {lguData?.hasUpcoming && (

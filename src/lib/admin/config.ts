@@ -55,8 +55,9 @@ export function getConfiguredAdminUserId(): string {
 }
 
 export function getPublicOrigin(): string {
+  const configuredOrigin = process.env.CLASSSTATUS_PUBLIC_ORIGIN?.trim();
   const vercelUrl = process.env.VERCEL_ENV === "preview" ? process.env.VERCEL_URL?.trim() : undefined;
-  const originText = vercelUrl ? `https://${vercelUrl}` : process.env.CLASSSTATUS_PUBLIC_ORIGIN?.trim();
+  const originText = configuredOrigin || (vercelUrl ? `https://${vercelUrl}` : undefined);
   if (!originText) throw new Error("ADMIN_AUTH_UNAVAILABLE");
   try {
     const parsed = new URL(originText);

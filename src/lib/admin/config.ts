@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
 
 export interface AdminConfig {
   username: string;
@@ -9,6 +10,7 @@ export interface AdminConfig {
 }
 
 export function getAdminConfig(): AdminConfig {
+  if (getStorageDriver() !== "local-json") throw new Error("ADMIN_AUTH_UNAVAILABLE");
   const username = process.env.CLASSSTATUS_ADMIN_USERNAME?.trim();
   const passwordHash = process.env.CLASSSTATUS_ADMIN_PASSWORD_HASH?.trim();
   const secretText = process.env.CLASSSTATUS_SESSION_SECRET?.trim();
@@ -29,6 +31,46 @@ export function getAdminConfig(): AdminConfig {
     publicOrigin,
     credentialVersion: createHash("sha256").update(`${username}\0${passwordHash}`).digest("hex"),
   };
+}
+
+function parseSecret(name: string): Buffer {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error("ADMIN_AUTH_UNAVAILABLE");
+  const secret = Buffer.from(value, "base64");
+  if (secret.length < 32) throw new Error("ADMIN_AUTH_UNAVAILABLE");
+  return secret;
+}
+
+export function getSecurityPepper(): Buffer {
+  if (getStorageDriver() === "local-json") return getAdminConfig().sessionSecret;
+  return parseSecret("CLASSSTATUS_SECURITY_PEPPER");
+}
+
+export function getConfiguredAdminUserId(): string {
+  const userId = process.env.CLASSSTATUS_ADMIN_USER_ID?.trim().toLowerCase();
+  if (!userId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(userId)) {
+    throw new Error("ADMIN_AUTH_UNAVAILABLE");
+  }
+  return userId;
+}
+
+export function getPublicOrigin(): string {
+  const vercelUrl = process.env.VERCEL_ENV === "preview" ? process.env.VERCEL_URL?.trim() : undefined;
+  const originText = vercelUrl ? `https://${vercelUrl}` : process.env.CLASSSTATUS_PUBLIC_ORIGIN?.trim();
+  if (!originText) throw new Error("ADMIN_AUTH_UNAVAILABLE");
+  try {
+    const parsed = new URL(originText);
+    if (!/^https?:$/.test(parsed.protocol) || parsed.pathname !== "/" || parsed.search || parsed.hash) throw new Error();
+    if (process.env.VERCEL === "1" && parsed.protocol !== "https:") throw new Error();
+    return parsed.origin;
+  } catch { throw new Error("ADMIN_AUTH_UNAVAILABLE"); }
+}
+
+export function getSupabaseSecretKey(): string {
+  if (getDeploymentNamespace() !== "production") throw new Error("ADMIN_STORAGE_UNAVAILABLE");
+  const secret = process.env.SUPABASE_SECRET_KEY?.trim();
+  if (!secret) throw new Error("ADMIN_STORAGE_UNAVAILABLE");
+  return secret;
 }
 
 export function adminCookieName(): string {

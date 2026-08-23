@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   const query = (searchParams.get("q") || "").trim().toLowerCase();
   const lguFilter = searchParams.get("lgu");
 
-  const records = getSuspensions();
+  const records = await getSuspensions();
 
   const enrichedSchools = NCR_SCHOOLS.map((school) => {
     const lguInfo = NCR_LGUS[school.lguId];

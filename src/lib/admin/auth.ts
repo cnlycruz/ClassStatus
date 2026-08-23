@@ -1,8 +1,19 @@
 import argon2 from "argon2";
 import { cookies } from "next/headers";
-import { getAdminConfig, adminCookieName } from "./config";
+import {
+  adminCookieName,
+  getAdminConfig,
+  getConfiguredAdminUserId,
+  getSecurityPepper,
+} from "./config";
 import { hmac, randomToken, safeEqual, sha256 } from "./crypto";
 import { securityStore } from "@/lib/storage";
+import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
+import {
+  createPublicSupabaseClient,
+  createUserSupabaseClient,
+  sessionIdFromAccessToken,
+} from "@/lib/supabase/server";
 import type { AdminSessionView, StoredSession } from "./types";
 
 const ABSOLUTE_MS = 8 * 60 * 60 * 1000;
@@ -12,27 +23,41 @@ const WINDOW_MS = 15 * 60 * 1000;
 const BACKOFF_MS = [30_000, 60_000, 120_000, 300_000, 900_000];
 
 function tokenDigest(token: string, secret: Buffer): string { return hmac(`session:${token}`, secret); }
-function csrfFor(session: StoredSession, secret: Buffer): string { return hmac(`csrf:${session.id}:${session.tokenDigest}`, secret); }
-function fingerprint(value: string, secret: Buffer): string { return hmac(`fingerprint:${value.normalize("NFKC").trim().toLowerCase()}`, secret); }
+function localCsrfFor(session: StoredSession, secret: Buffer): string { return hmac(`csrf:${session.id}:${session.tokenDigest}`, secret); }
+function supabaseCsrfFor(sessionId: string): string { return hmac(`supabase-csrf:${sessionId}`, getSecurityPepper()); }
+function fingerprint(value: string, secret = getSecurityPepper()): string { return hmac(`fingerprint:${value.normalize("NFKC").trim().toLowerCase()}`, secret); }
 
 export function createLoginChallenge(): string {
-  const config = getAdminConfig();
   const payload = `${randomToken(18)}.${Date.now() + CHALLENGE_MS}`;
-  return `${payload}.${hmac(`login:${payload}`, config.sessionSecret)}`;
+  return `${payload}.${hmac(`login:${payload}`, getSecurityPepper())}`;
 }
 
 export function verifyLoginChallenge(challenge: string): boolean {
   try {
-    const config = getAdminConfig();
     const parts = challenge.split(".");
     if (parts.length !== 3) return false;
     const payload = `${parts[0]}.${parts[1]}`;
-    return Number(parts[1]) > Date.now() && safeEqual(parts[2], hmac(`login:${payload}`, config.sessionSecret));
+    return Number(parts[1]) > Date.now() && safeEqual(parts[2], hmac(`login:${payload}`, getSecurityPepper()));
   } catch { return false; }
 }
 
-export function checkLoginThrottle(identifier: string): { allowed: boolean; retryAfterSeconds?: number } {
-  const config = getAdminConfig(); const now = Date.now();
+async function supabaseThrottleRpc(operation: "check_login_throttle" | "record_login_failure", identifier: string) {
+  const namespace = getDeploymentNamespace();
+  const { data, error } = await createPublicSupabaseClient().rpc(`classstatus_${namespace}_${operation}`, {
+    p_fingerprint: fingerprint(identifier),
+  });
+  if (error) throw new Error("ADMIN_AUTH_UNAVAILABLE");
+  return data;
+}
+
+export async function checkLoginThrottle(identifier: string): Promise<{ allowed: boolean; retryAfterSeconds?: number }> {
+  if (getStorageDriver() === "supabase") {
+    const data = await supabaseThrottleRpc("check_login_throttle", identifier) as { allowed?: unknown; retryAfterSeconds?: unknown } | null;
+    if (!data || typeof data.allowed !== "boolean") throw new Error("ADMIN_AUTH_UNAVAILABLE");
+    return { allowed: data.allowed, ...(typeof data.retryAfterSeconds === "number" ? { retryAfterSeconds: data.retryAfterSeconds } : {}) };
+  }
+  const config = getAdminConfig();
+  const now = Date.now();
   return securityStore.mutateSecurity((state) => {
     state.globalFailures = state.globalFailures.filter((time) => now - Date.parse(time) < WINDOW_MS);
     const bucket = state.identifierBuckets.find((item) => item.fingerprint === fingerprint(identifier, config.sessionSecret));
@@ -43,8 +68,14 @@ export function checkLoginThrottle(identifier: string): { allowed: boolean; retr
   });
 }
 
-export function recordLoginFailure(identifier: string): void {
-  const config = getAdminConfig(); const now = Date.now(); const nowIso = new Date(now).toISOString();
+export async function recordLoginFailure(identifier: string): Promise<void> {
+  if (getStorageDriver() === "supabase") {
+    await supabaseThrottleRpc("record_login_failure", identifier);
+    return;
+  }
+  const config = getAdminConfig();
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
   securityStore.mutateSecurity((state) => {
     state.globalFailures = [...state.globalFailures.filter((time) => now - Date.parse(time) < WINDOW_MS), nowIso];
     const fp = fingerprint(identifier, config.sessionSecret);
@@ -67,8 +98,10 @@ export async function verifyAdminCredentials(username: string, password: string)
   return safeEqual(sha256(username.normalize("NFKC").trim()), sha256(config.username)) && passwordValid;
 }
 
-export async function issueAdminSession(): Promise<AdminSessionView> {
-  const config = getAdminConfig(); const now = new Date(); const token = randomToken(32);
+async function issueLocalAdminSession(): Promise<AdminSessionView> {
+  const config = getAdminConfig();
+  const now = new Date();
+  const token = randomToken(32);
   const session: StoredSession = {
     id: randomToken(18), tokenDigest: tokenDigest(token, config.sessionSecret), credentialVersion: config.credentialVersion,
     createdAt: now.toISOString(), lastSeenAt: now.toISOString(), absoluteExpiresAt: new Date(now.getTime() + ABSOLUTE_MS).toISOString(),
@@ -81,15 +114,56 @@ export async function issueAdminSession(): Promise<AdminSessionView> {
     securityStore.mutateSecurity((state) => { if (state.activeSession?.id === session.id) delete state.activeSession; });
     throw error;
   }
-  return { id: session.id, csrfToken: csrfFor(session, config.sessionSecret), absoluteExpiresAt: session.absoluteExpiresAt, idleExpiresAt: new Date(now.getTime() + IDLE_MS).toISOString() };
+  return { id: session.id, csrfToken: localCsrfFor(session, config.sessionSecret), absoluteExpiresAt: session.absoluteExpiresAt, idleExpiresAt: new Date(now.getTime() + IDLE_MS).toISOString() };
 }
 
-export async function getAdminSession(options: { touch?: boolean } = {}): Promise<AdminSessionView | null> {
+async function supabaseSessionPolicyRpc(operation: "start_admin_session" | "touch_admin_session" | "revoke_admin_session", args: Record<string, unknown> = {}) {
+  const namespace = getDeploymentNamespace();
+  const client = await createUserSupabaseClient();
+  const { data, error } = await client.rpc(`classstatus_${namespace}_${operation}`, args);
+  if (error) throw new Error("ADMIN_AUTH_UNAVAILABLE");
+  return { client, data };
+}
+
+export async function authenticateAndIssueAdminSession(identifier: string, password: string): Promise<AdminSessionView | null> {
+  if (getStorageDriver() === "local-json") {
+    if (!await verifyAdminCredentials(identifier, password)) return null;
+    return issueLocalAdminSession();
+  }
+  const client = await createUserSupabaseClient();
+  const { data, error } = await client.auth.signInWithPassword({ email: identifier, password });
+  if (error || !data.user || !data.session || data.user.id !== getConfiguredAdminUserId()) {
+    await client.auth.signOut({ scope: "local" }).catch(() => undefined);
+    return null;
+  }
+  const sessionId = sessionIdFromAccessToken(data.session.access_token);
+  const csrfToken = supabaseCsrfFor(sessionId);
+  try {
+    const result = await supabaseSessionPolicyRpc("start_admin_session", {
+      p_csrf_digest: sha256(csrfToken),
+      p_login_fingerprint: fingerprint(identifier),
+    });
+    const policy = result.data as { sessionId?: unknown; absoluteExpiresAt?: unknown; idleExpiresAt?: unknown } | null;
+    if (!policy || policy.sessionId !== sessionId || typeof policy.absoluteExpiresAt !== "string" || typeof policy.idleExpiresAt !== "string") throw new Error();
+    return { id: sessionId, csrfToken, absoluteExpiresAt: policy.absoluteExpiresAt, idleExpiresAt: policy.idleExpiresAt };
+  } catch (error) {
+    await client.auth.signOut({ scope: "local" }).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function issueAdminSession(): Promise<AdminSessionView> {
+  if (getStorageDriver() !== "local-json") throw new Error("ADMIN_AUTH_UNAVAILABLE");
+  return issueLocalAdminSession();
+}
+
+async function getLocalAdminSession(options: { touch?: boolean }): Promise<AdminSessionView | null> {
   let config; try { config = getAdminConfig(); } catch { return null; }
   let token: string | undefined;
   try { token = (await cookies()).get(adminCookieName())?.value; } catch { return null; }
   if (!token) return null;
-  const digest = tokenDigest(token, config.sessionSecret); const now = Date.now();
+  const digest = tokenDigest(token, config.sessionSecret);
+  const now = Date.now();
   try {
     return securityStore.mutateSecurity((state) => {
       const session = state.activeSession;
@@ -98,8 +172,27 @@ export async function getAdminSession(options: { touch?: boolean } = {}): Promis
         return null;
       }
       if (options.touch !== false && now - Date.parse(session.lastSeenAt) >= 60_000) session.lastSeenAt = new Date(now).toISOString();
-      return { id: session.id, csrfToken: csrfFor(session, config.sessionSecret), absoluteExpiresAt: session.absoluteExpiresAt, idleExpiresAt: new Date(Date.parse(session.lastSeenAt) + IDLE_MS).toISOString() };
+      return { id: session.id, csrfToken: localCsrfFor(session, config.sessionSecret), absoluteExpiresAt: session.absoluteExpiresAt, idleExpiresAt: new Date(Date.parse(session.lastSeenAt) + IDLE_MS).toISOString() };
     });
+  } catch { return null; }
+}
+
+export async function getAdminSession(options: { touch?: boolean } = {}): Promise<AdminSessionView | null> {
+  let driver; try { driver = getStorageDriver(); } catch { return null; }
+  if (driver === "local-json") return getLocalAdminSession(options);
+  try {
+    const client = await createUserSupabaseClient();
+    const { data: userData, error: userError } = await client.auth.getUser();
+    if (userError || !userData.user || userData.user.id !== getConfiguredAdminUserId()) return null;
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (sessionError || !accessToken) return null;
+    const sessionId = sessionIdFromAccessToken(accessToken);
+    const result = await supabaseSessionPolicyRpc("touch_admin_session", { p_touch: options.touch !== false });
+    const policy = result.data as { sessionId?: unknown; csrfDigest?: unknown; absoluteExpiresAt?: unknown; idleExpiresAt?: unknown } | null;
+    const csrfToken = supabaseCsrfFor(sessionId);
+    if (!policy || policy.sessionId !== sessionId || policy.csrfDigest !== sha256(csrfToken) || typeof policy.absoluteExpiresAt !== "string" || typeof policy.idleExpiresAt !== "string") return null;
+    return { id: sessionId, csrfToken, absoluteExpiresAt: policy.absoluteExpiresAt, idleExpiresAt: policy.idleExpiresAt };
   } catch { return null; }
 }
 
@@ -113,6 +206,16 @@ export function isStoredSessionValidForToken(session: StoredSession, token: stri
 }
 
 export async function revokeAdminSession(): Promise<void> {
-  try { securityStore.mutateSecurity((state) => { delete state.activeSession; }); } catch { /* fail closed */ }
-  (await cookies()).set(adminCookieName(), "", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/", maxAge: 0 });
+  if (getStorageDriver() === "local-json") {
+    try { securityStore.mutateSecurity((state) => { delete state.activeSession; }); } catch { /* fail closed */ }
+    (await cookies()).set(adminCookieName(), "", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/", maxAge: 0 });
+    return;
+  }
+  try {
+    const result = await supabaseSessionPolicyRpc("revoke_admin_session");
+    await result.client.auth.signOut({ scope: "global" });
+  } catch {
+    const client = await createUserSupabaseClient();
+    await client.auth.signOut({ scope: "local" }).catch(() => undefined);
+  }
 }

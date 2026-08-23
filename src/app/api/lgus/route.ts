@@ -6,7 +6,7 @@ import { formatManilaDateReadable, formatManilaTime } from "@/utils/philippineTi
 import { projectPublicSuspension } from "@/lib/admin/publicProjection";
 
 export async function GET() {
-  const records = getSuspensions();
+  const records = await getSuspensions();
 
   let suspendedCount = 0;
   let partialCount = 0;

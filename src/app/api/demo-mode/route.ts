@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSuspensions } from "@/collector/storage";
 
 export async function GET() {
-  const records = getSuspensions();
+  const records = await getSuspensions();
   return NextResponse.json({
     isDemoMode: false,
     totalRecords: records.length,

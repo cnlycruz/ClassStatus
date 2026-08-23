@@ -34,9 +34,9 @@ describe("collector log storage cache", () => {
     fs.rmSync(testDirectory, { recursive: true, force: true });
   });
 
-  it("reloads when another process changes collector_logs.json", () => {
-    appendCollectorLogs([log("server", "Server-side run")]);
-    expect(getCollectorLogs()[0].id).toBe("server");
+  it("reloads when another process changes collector_logs.json", async () => {
+    await appendCollectorLogs([log("server", "Server-side run")]);
+    expect((await getCollectorLogs())[0].id).toBe("server");
 
     const externalLog = log("cli", "External CLI run with a different file version");
     const file = path.join(testDirectory, "collector_logs.json");
@@ -44,6 +44,6 @@ describe("collector log storage cache", () => {
     const futureMtime = new Date(Date.now() + 5_000);
     fs.utimesSync(file, futureMtime, futureMtime);
 
-    expect(getCollectorLogs()).toEqual([externalLog]);
+    expect(await getCollectorLogs()).toEqual([externalLog]);
   });
 });

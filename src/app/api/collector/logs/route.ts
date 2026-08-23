@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     await requireAdmin();
-    const logs = getCollectorLogs();
+    const logs = await getCollectorLogs();
     return NextResponse.json(
     {
       count: logs.length,

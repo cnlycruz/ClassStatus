@@ -85,9 +85,9 @@ function collectedRecord(sourceId: string, organization: string, fingerprint: st
 }
 
 describe("Tier 3 collector policy and persistence", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetStorageCacheForTests();
-    clearLiveSuspensions();
+    await clearLiveSuspensions();
   });
 
   it("hard-disables Tier 1 even when a caller tries to enable it", async () => {
@@ -125,9 +125,9 @@ describe("Tier 3 collector policy and persistence", () => {
       const summary = await engine.runSweep();
       expect(summary).toMatchObject({ sourcesEligible: 1, sourcesSucceeded: 1, announcementsPublished: 1, announcementsHeld: 0 });
       expect(summary.logs.every((log) => log.runId === summary.runId)).toBe(true);
-      expect(getSuspensions()).toHaveLength(1);
-      expect(getSuspensions()[0].source.url).toBe("https://gma.example/article");
-      expect(getSuspensions()[0].source.evidenceExcerpt).toContain("Manila");
+      expect(await getSuspensions()).toHaveLength(1);
+      expect((await getSuspensions())[0].source.url).toBe("https://gma.example/article");
+      expect((await getSuspensions())[0].source.evidenceExcerpt).toContain("Manila");
 
       const response = await getLgus();
       const body = await response.json();
@@ -137,9 +137,9 @@ describe("Tier 3 collector policy and persistence", () => {
     }
   });
 
-  it("promotes matching independent evidence to high confidence", () => {
-    const first = upsertCollectedSuspensionRecord(collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64)));
-    const second = upsertCollectedSuspensionRecord(collectedRecord("rappler-walang-pasok", "Rappler Philippines", "b".repeat(64)));
+  it("promotes matching independent evidence to high confidence", async () => {
+    const first = await upsertCollectedSuspensionRecord(collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64)));
+    const second = await upsertCollectedSuspensionRecord(collectedRecord("rappler-walang-pasok", "Rappler Philippines", "b".repeat(64)));
     expect(first.action).toBe("created");
     expect(second.action).toBe("merged");
     expect(second.record.confidence).toBe("high");
@@ -147,23 +147,23 @@ describe("Tier 3 collector policy and persistence", () => {
     expect(second.record.additionalSources).toHaveLength(1);
   });
 
-  it("holds contradictory evidence out of live storage", () => {
-    upsertCollectedSuspensionRecord(collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64)));
+  it("holds contradictory evidence out of live storage", async () => {
+    await upsertCollectedSuspensionRecord(collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64)));
     const conflicting = {
       ...collectedRecord("rappler-walang-pasok", "Rappler Philippines", "b".repeat(64)),
       status: "partial-suspension" as const,
     };
-    const result = upsertCollectedSuspensionRecord(conflicting);
+    const result = await upsertCollectedSuspensionRecord(conflicting);
     expect(result.action).toBe("held");
-    expect(getSuspensions()).toHaveLength(1);
+    expect(await getSuspensions()).toHaveLength(1);
   });
 
-  it("rejects Tier 1 and records without collector provenance", () => {
+  it("rejects Tier 1 and records without collector provenance", async () => {
     const invalid = collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64));
     invalid.source.reliabilityTier = 1;
-    expect(() => upsertCollectedSuspensionRecord(invalid)).toThrow(/operational Tier 3/);
+    await expect(upsertCollectedSuspensionRecord(invalid)).rejects.toThrow(/operational Tier 3/);
 
     const inactive = collectedRecord("inquirer-suspensions", "Philippine Daily Inquirer", "b".repeat(64));
-    expect(() => upsertCollectedSuspensionRecord(inactive)).toThrow(/operational Tier 3/);
+    await expect(upsertCollectedSuspensionRecord(inactive)).rejects.toThrow(/operational Tier 3/);
   });
 });

@@ -208,7 +208,7 @@ export class CollectorEngine {
                 isUpcoming: lifecycle.isUpcoming,
                 isExpired: lifecycle.isExpired,
               };
-              const result = upsertCollectedSuspensionRecord(finalRecord);
+              const result = await upsertCollectedSuspensionRecord(finalRecord);
               if (result.action === "held") {
                 announcementsHeld++;
                 addLog("warn", source.id, source.name, `Held conflicting statement for ${lguId.toUpperCase()}.`, {
@@ -251,7 +251,7 @@ export class CollectorEngine {
       "Collector Engine",
       `Sweep complete: ${announcementsPublished} published, ${announcementsHeld} held, ${announcementsRejected} rejected.`
     );
-    appendCollectorLogs(logs);
+    await appendCollectorLogs(logs);
 
     return {
       runId,

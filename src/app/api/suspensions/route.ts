@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const filterStatus = searchParams.get("status");
   const upcomingOnly = searchParams.get("upcoming") === "true";
 
-  let records = getSuspensions();
+  const records = await getSuspensions();
 
   // Evaluate each record's current lifecycle dynamically
   const evaluated = records.map((r) => {

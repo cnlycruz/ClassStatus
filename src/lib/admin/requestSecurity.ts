@@ -1,15 +1,31 @@
 import type { NextRequest } from "next/server";
-import { getAdminConfig } from "./config";
+import { getAdminConfig, getConfiguredAdminUserId, getPublicOrigin, getSecurityPepper } from "./config";
 import { getAdminSession } from "./auth";
 import { safeEqual } from "./crypto";
 import { securityStore } from "@/lib/storage";
+import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
+import { getSupabaseRuntimeConfig } from "@/lib/supabase/runtimeConfig";
 
 export class AdminHttpError extends Error {
   constructor(public status: number, public code: string) { super(code); }
 }
 
+function assertAdminRuntime(): void {
+  const driver = getStorageDriver();
+  getPublicOrigin();
+  if (driver === "local-json") {
+    getAdminConfig();
+    securityStore.readSecurity();
+    return;
+  }
+  getDeploymentNamespace();
+  getSupabaseRuntimeConfig();
+  getConfiguredAdminUserId();
+  getSecurityPepper();
+}
+
 export async function requireAdmin(): Promise<NonNullable<Awaited<ReturnType<typeof getAdminSession>>>> {
-  try { getAdminConfig(); securityStore.readSecurity(); }
+  try { assertAdminRuntime(); }
   catch { throw new AdminHttpError(503, "ADMIN_UNAVAILABLE"); }
   const session = await getAdminSession();
   if (!session) throw new AdminHttpError(401, "UNAUTHENTICATED");
@@ -17,9 +33,9 @@ export async function requireAdmin(): Promise<NonNullable<Awaited<ReturnType<typ
 }
 
 export async function requireAdminMutation(request: NextRequest) {
-  let config; try { config = getAdminConfig(); } catch { throw new AdminHttpError(503, "ADMIN_UNAVAILABLE"); }
+  let publicOrigin; try { assertAdminRuntime(); publicOrigin = getPublicOrigin(); } catch { throw new AdminHttpError(503, "ADMIN_UNAVAILABLE"); }
   const session = await requireAdmin();
-  validateMutationEnvelope(request, config.publicOrigin, session.csrfToken);
+  validateMutationEnvelope(request, publicOrigin, session.csrfToken);
   return session;
 }
 

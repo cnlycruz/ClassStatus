@@ -36,9 +36,9 @@ describe("admin route boundaries", () => {
   it("bounds JSON bodies and applies login backoff", async () => {
     const oversized = new NextRequest("http://localhost:3000/api/admin/test", { method: "POST", body: JSON.stringify({ value: "x".repeat(100) }) });
     await expect(readBoundedJson(oversized, 32)).rejects.toThrow("REQUEST_TOO_LARGE");
-    for (let attempt = 0; attempt < 5; attempt++) recordLoginFailure("admin");
-    expect(checkLoginThrottle("admin").allowed).toBe(false);
-    expect(checkLoginThrottle("unknown").allowed).toBe(true);
+    for (let attempt = 0; attempt < 5; attempt++) await recordLoginFailure("admin");
+    expect((await checkLoginThrottle("admin")).allowed).toBe(false);
+    expect((await checkLoginThrottle("unknown")).allowed).toBe(true);
   });
   it("returns unavailable instead of falling back to local JSON on Vercel production", async () => {
     process.env.VERCEL = "1"; process.env.VERCEL_ENV = "production";

@@ -12,9 +12,9 @@ import { suspensionStore } from "@/lib/storage";
 export const dynamic = "force-dynamic";
 export async function GET() {
   try {
-    const session = await requireAdmin(); reconcileExpiredRemovals();
-    const state = suspensionStore.readState();
+    const session = await requireAdmin(); await reconcileExpiredRemovals();
+    const state = await suspensionStore.readState();
     const records = state.records.filter((record) => effectiveAdminState(record) !== "removed" && !evaluateSuspensionLifecycle(record).isExpired);
-    return Response.json({ session, sources: globalCollector.getSources().filter((source) => source.operationalState === "operational" && source.enabled), logs: getCollectorLogs(), records, audit: listAudit(50), auditTotal: state.audit.length, registries: { lgus: Object.values(NCR_LGUS).map(({ id, name }) => ({ id, name })), schools: NCR_SCHOOLS.map(({ id, name, campusName, lguId, sector, levelsOffered }) => ({ id, name, campusName, lguId, sector, levelsOffered })) } }, { headers: { "Cache-Control": "no-store, private" } });
+    return Response.json({ session, sources: globalCollector.getSources().filter((source) => source.operationalState === "operational" && source.enabled), logs: await getCollectorLogs(), records, audit: await listAudit(50), auditTotal: state.audit.length, registries: { lgus: Object.values(NCR_LGUS).map(({ id, name }) => ({ id, name })), schools: NCR_SCHOOLS.map(({ id, name, campusName, lguId, sector, levelsOffered }) => ({ id, name, campusName, lguId, sector, levelsOffered })) } }, { headers: { "Cache-Control": "no-store, private" } });
   } catch (error) { return adminErrorResponse(error); }
 }

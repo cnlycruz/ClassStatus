@@ -21,7 +21,7 @@ interface StatusHeroProps {
   onRefresh: () => void;
 }
 
-export function StatusHero({
+export const StatusHero = React.memo(function StatusHero({
   summary,
   activeFilter,
   onFilterChange,
@@ -107,4 +107,4 @@ export function StatusHero({
       </div>
     </section>
   );
-}
+});

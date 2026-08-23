@@ -6,6 +6,8 @@ import { normalizeManualDraft } from "./validation";
 import type { NormalizedManualDraft } from "./types";
 import type { SuspensionRecord } from "@/types";
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function payloadHash(value: unknown): string { return sha256(stableJson(value)); }
 function eventKey(record: Pick<SuspensionRecord, "lguId" | "schoolId" | "effectiveDate" | "status" | "affectedLevels" | "schoolSector" | "isAllDay" | "startTime" | "endTime">): string {
   return createHash("sha256").update([record.lguId, record.schoolId || "lgu", record.effectiveDate, record.status, [...record.affectedLevels].sort().join(","), record.schoolSector, record.isAllDay ? "all-day" : `${record.startTime}-${record.endTime}`].join("|")).digest("hex");
@@ -22,8 +24,9 @@ export async function createPublicationPreview(input: unknown, sessionId: string
 }
 
 export async function publishManualSuspension(input: { draft: unknown; confirmationToken: string; idempotencyKey: string }, sessionId: string): Promise<SuspensionRecord> {
-  const normalized = normalizeManualDraft(input.draft); const hash = payloadHash(normalized); const [confirmationId, signature] = input.confirmationToken.split(".");
-  if (!/^[0-9a-f-]{36}$/i.test(input.idempotencyKey) || !confirmationId || !signature) throw new Error("confirmation-invalid");
+  const normalized = normalizeManualDraft(input.draft); const hash = payloadHash(normalized); const tokenParts = input.confirmationToken.split(".");
+  if (tokenParts.length !== 2 || !UUID_PATTERN.test(input.idempotencyKey) || !UUID_PATTERN.test(tokenParts[0]) || !/^[A-Za-z0-9_-]{43}$/.test(tokenParts[1])) throw new Error("confirmation-invalid");
+  const [confirmationId, signature] = tokenParts;
   const expected = hmac(`confirmation:${confirmationId}:${sessionId}:${hash}`, getSecurityPepper());
   if (!safeEqual(signature, expected)) throw new Error("confirmation-invalid");
   const requestHash = payloadHash({ normalized, confirmationId });
@@ -60,7 +63,8 @@ export function undoRemoval(recordId: string, expectedRevision: number, idempote
   return mutateLifecycle("undo", recordId, expectedRevision, idempotencyKey, sessionId);
 }
 function mutateLifecycle(operation: "remove" | "undo", recordId: string, expectedRevision: number, key: string, sessionId: string): Promise<SuspensionRecord> {
-  if (!/^[0-9a-f-]{36}$/i.test(key)) throw new Error("idempotency-invalid");
+  if (!UUID_PATTERN.test(key)) throw new Error("idempotency-invalid");
+  if (!recordId || recordId.length > 128 || /[\u0000-\u001F\u007F]/.test(recordId)) throw new Error("record-id-invalid");
   return suspensionStore.mutateLifecycle({ operation, recordId, expectedRevision, idempotencyKey: key, requestHash: payloadHash({ recordId, expectedRevision }), sessionId });
 }
 

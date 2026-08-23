@@ -27,14 +27,31 @@ function uuid() { return crypto.randomUUID(); }
 export function AdminConsoleClient() {
   const router = useRouter(); const [data, setData] = useState<Bootstrap | null>(null); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [busy, setBusy] = useState("");
   const [draft, setDraft] = useState<ManualSuspensionDraft>(freshDraft); const [preview, setPreview] = useState<PublicationPreview | null>(null); const [removeRecord, setRemoveRecord] = useState<SuspensionRecord | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null); const logViewport = useRef<HTMLDivElement>(null); const previewBackRef = useRef<HTMLButtonElement>(null); const removeCancelRef = useRef<HTMLButtonElement>(null); const [now, setNow] = useState(Date.now());
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null); const logViewport = useRef<HTMLDivElement>(null); const previewBackRef = useRef<HTMLButtonElement>(null); const removeCancelRef = useRef<HTMLButtonElement>(null); const loadInFlight = useRef(false);
   const load = useCallback(async () => {
-    const response = await fetch("/api/admin/bootstrap", { cache: "no-store" });
-    if (response.status === 401) { router.replace("/collector/login"); return; }
-    if (!response.ok) throw new Error("The Admin Console is unavailable. Check secure storage and authentication configuration.");
-    setData(await response.json());
+    if (loadInFlight.current) return;
+    loadInFlight.current = true;
+    try {
+      const response = await fetch("/api/admin/bootstrap", { cache: "no-store" });
+      if (response.status === 401) { router.replace("/collector/login"); return; }
+      if (!response.ok) throw new Error("The Admin Console is unavailable. Check secure storage and authentication configuration.");
+      setData(await response.json());
+    } finally {
+      loadInFlight.current = false;
+    }
   }, [router]);
-  useEffect(() => { load().catch((reason) => setError(reason.message)); const poll = window.setInterval(() => load().catch(() => undefined), 10_000); const tick = window.setInterval(() => setNow(Date.now()), 1000); return () => { clearInterval(poll); clearInterval(tick); }; }, [load]);
+  useEffect(() => {
+    let poll: number | undefined;
+    const refresh = () => { if (document.visibilityState === "visible") load().catch((reason) => setError(reason.message)); };
+    const schedule = () => {
+      if (poll) window.clearInterval(poll);
+      poll = document.visibilityState === "visible" ? window.setInterval(() => load().catch(() => undefined), 30_000) : undefined;
+    };
+    const handleVisibilityChange = () => { refresh(); schedule(); };
+    refresh(); schedule();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => { if (poll) window.clearInterval(poll); document.removeEventListener("visibilitychange", handleVisibilityChange); };
+  }, [load]);
   useEffect(() => { if (preview) previewBackRef.current?.focus(); else if (removeRecord) removeCancelRef.current?.focus(); const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setPreview(null); setRemoveRecord(null); } }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [preview, removeRecord]);
   const mutate = async (url: string, body: unknown) => {
     if (!data) throw new Error("Admin session is not ready.");
@@ -43,7 +60,7 @@ export function AdminConsoleClient() {
   };
   const logRuns = useMemo(() => groupCollectorLogs(data?.logs || []), [data?.logs]); const selectedRun = logRuns.find((run) => run.id === selectedRunId) || logRuns[0];
   const activeRecords = (data?.records || []).filter((record) => record.administrativeState !== "pending_removal");
-  const pendingRecords = (data?.records || []).filter((record) => record.administrativeState === "pending_removal" && record.undoDeadline && Date.parse(record.undoDeadline) > now);
+  const pendingRecords = (data?.records || []).filter((record) => record.administrativeState === "pending_removal" && record.undoDeadline);
   const targetLabel = (record: SuspensionRecord) => record.schoolId ? data?.registries.schools.find((item) => item.id === record.schoolId)?.name || record.schoolId : data?.registries.lgus.find((item) => item.id === record.lguId)?.name || record.lguId;
   const fieldClass = "min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white";
   const timed = ["morning-classes", "afternoon-classes", "evening-classes", "from-specific-time"].includes(draft.duration.preset) || (draft.duration.preset === "other" && draft.duration.isAllDay !== true);
@@ -66,7 +83,7 @@ export function AdminConsoleClient() {
         <Overview label="Latest collector run" value={logRuns[0] ? formatCollectorTimestamp(logRuns[0].startedAt) : "No run yet"} detail={logRuns[0]?.summary || "Awaiting a collector execution"} icon={<Clock3 />} />
         <Overview label="Current suspensions" value={`${activeRecords.length}`} detail={`${pendingRecords.length} pending removal`} icon={<FileCheck2 />} />
       </div></section>
-      {pendingRecords.length > 0 && <section aria-label="Undo removals" className="space-y-2">{pendingRecords.map((record) => <div key={record.id} className="flex flex-col justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100 sm:flex-row sm:items-center"><div><strong>{targetLabel(record)}</strong> is no longer public. Undo closes in <span className="font-mono font-bold">{Math.max(0, Math.ceil((Date.parse(record.undoDeadline!) - now) / 1000))}s</span>.</div><button onClick={() => undo(record)} disabled={busy === `undo-${record.id}`} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-amber-900 px-4 text-sm font-bold text-white disabled:opacity-60"><Undo2 className="h-4 w-4" />Undo removal</button></div>)}</section>}
+      {pendingRecords.length > 0 && <section aria-label="Undo removals" className="space-y-2">{pendingRecords.map((record) => <UndoCountdown key={record.id} label={targetLabel(record)} deadline={record.undoDeadline!} onUndo={() => undo(record)} busy={busy === `undo-${record.id}`} />)}</section>}
       <section aria-labelledby="current-title" className="space-y-3"><div><h2 id="current-title" className="text-xl font-bold text-slate-950 dark:text-white">Current Suspensions</h2><p className="mt-1 text-sm text-slate-500">Active and upcoming publications. Removal preserves evidence and audit history.</p></div><div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">{activeRecords.length === 0 ? <p className="px-5 py-10 text-center text-sm text-slate-500">No active suspension records.</p> : activeRecords.map((record) => <article key={record.id} className="flex flex-col gap-4 border-b border-slate-100 p-4 last:border-0 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold text-slate-950 dark:text-white">{targetLabel(record)}</h3><span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-300">{record.schoolId ? "School" : "LGU"}</span><span className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">{record.publicationProvenance?.type === "manual-admin" ? "Manual admin" : "Automatic collector"}</span></div><p className="mt-1 text-sm text-slate-700 dark:text-slate-300">{record.reason} · {record.durationLabel || (record.isAllDay ? "Whole Day" : `${record.startTime}–${record.endTime}`)}</p><p className="mt-1 text-xs text-slate-500">{record.effectiveDate} · {record.affectedLevels.join(", ")} · {record.schoolSector} · {record.source.organization}</p><a href={record.manualEvidence?.proofUrl || record.source.url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-blue-600">View evidence <ExternalLink className="h-3 w-3" /></a></div><button onClick={() => setRemoveRecord(record)} className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-red-200 px-4 text-sm font-bold text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950"><Trash2 className="h-4 w-4" />Remove</button></article>)}</div></section>
       <section aria-labelledby="publish-title" className="space-y-3"><div><h2 id="publish-title" className="text-xl font-bold text-slate-950 dark:text-white">Publish Suspension</h2><p className="mt-1 text-sm text-slate-500">Registry-backed, evidence-required manual publication.</p></div><form onSubmit={requestPreview} className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-2 sm:p-6">
         <Field label="Target type"><select className={fieldClass} value={draft.targetType} onChange={(e) => { const targetType = e.target.value as "lgu" | "school"; const first = targetType === "lgu" ? data.registries.lgus[0].id : data.registries.schools[0].id; setDraft({ ...draft, targetType, targetId: first, sector: targetType === "lgu" ? "all" : data.registries.schools[0].sector, affectedLevels: ["all-levels"] }); setPreview(null); }}><option value="lgu">LGU</option><option value="school">School</option></select></Field>
@@ -93,5 +110,6 @@ export function AdminConsoleClient() {
 }
 
 function Overview({ label, value, detail, icon }: { label: string; value: string; detail: string; icon: React.ReactNode }) { return <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"><div className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-500"><span>{label}</span><span className="[&>svg]:h-4 [&>svg]:w-4">{icon}</span></div><div className="mt-2 text-2xl font-black text-slate-950 dark:text-white">{value}</div><p className="mt-1 overflow-hidden text-ellipsis text-xs text-slate-500">{detail}</p></div>; }
+function UndoCountdown({ label, deadline, onUndo, busy }: { label: string; deadline: string; onUndo: () => void; busy: boolean }) { const [now, setNow] = useState(Date.now()); useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []); const seconds = Math.max(0, Math.ceil((Date.parse(deadline) - now) / 1000)); if (seconds === 0) return null; return <div className="flex flex-col justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100 sm:flex-row sm:items-center"><div><strong>{label}</strong> is no longer public. Undo closes in <span className="font-mono font-bold">{seconds}s</span>.</div><button onClick={onUndo} disabled={busy} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-amber-900 px-4 text-sm font-bold text-white disabled:opacity-60"><Undo2 className="h-4 w-4" />Undo removal</button></div>; }
 function Field({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) { return <label className={`block min-w-0 text-sm font-semibold text-slate-800 dark:text-slate-200 ${wide ? "sm:col-span-2" : ""}`}><span className="mb-1.5 block">{label}</span>{children}</label>; }
 function PresetField({ label, options, value, onChange, customLabel, fieldClass }: { label: string; options: string[][]; value: { preset: string; customValue?: string }; onChange: (value: { preset: string; customValue?: string }) => void; customLabel: string; fieldClass: string }) { return <div className="space-y-2"><Field label={label}><select className={fieldClass} value={value.preset} onChange={(e) => onChange({ preset: e.target.value })}>{options.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></Field>{value.preset === "other" && <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400">{customLabel}<input required maxLength={120} className={`${fieldClass} mt-1`} value={value.customValue || ""} onChange={(e) => onChange({ preset: "other", customValue: e.target.value })} /></label>}</div>; }

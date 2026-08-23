@@ -13,9 +13,6 @@ export function Footer() {
               <span className="font-bold text-slate-900 dark:text-white text-sm">
                 ClassStatus NCR
               </span>
-              <span className="rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 text-[10px] px-1.5 py-0.2 font-semibold">
-                v1.0
-              </span>
             </div>
             <p className="max-w-md leading-relaxed text-slate-600 dark:text-slate-400">
               Metro Manila’s premier real-time class suspension tracking system answering “May pasok ba?”
@@ -72,11 +69,6 @@ export function Footer() {
 
         <div className="mt-8 pt-6 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px]">
           <p>© {new Date().getFullYear()} ClassStatus NCR. Dedicated to Filipino students and educators.</p>
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1">
-              Built with precision & high-performance Next.js
-            </span>
-          </div>
         </div>
       </div>
     </footer>

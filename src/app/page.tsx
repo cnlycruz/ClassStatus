@@ -1,18 +1,22 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { StatusHero } from "@/components/StatusHero";
 import { NcrInteractiveMap } from "@/components/NcrInteractiveMap";
-import { LguDetailPanel } from "@/components/LguDetailPanel";
-import { ListView } from "@/components/ListView";
-import { SchoolFinderModal } from "@/components/SchoolFinderModal";
 import { ALL_LGU_IDS, NCR_LGUS } from "@/data/lgus";
 import { LGUId, LGUInfo, MayPasokSummary, SuspensionRecord, SuspensionStatus } from "@/types";
+import { getInitialDashboardSelection } from "@/lib/dashboardSelection";
 import { MapPin, Compass } from "lucide-react";
 
+const LguDetailPanel = dynamic(() => import("@/components/LguDetailPanel").then((module) => module.LguDetailPanel));
+const ListView = dynamic(() => import("@/components/ListView").then((module) => module.ListView));
+const SchoolFinderModal = dynamic(() => import("@/components/SchoolFinderModal").then((module) => module.SchoolFinderModal), { ssr: false });
+
 export default function HomePage() {
+  const initialSelectionApplied = useRef(false);
   const [lgus, setLgus] = useState<
     (LGUInfo & {
       status: SuspensionStatus;
@@ -27,17 +31,15 @@ export default function HomePage() {
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"map" | "list">("map");
   const [isSchoolSearchOpen, setIsSchoolSearchOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
   // Initialize data
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const res = await fetch("/api/lgus");
       if (res.ok) {
         const json = await res.json();
         setLgus(json.lgus);
         setSummary(json.summary);
-        setIsLoading(false);
         return;
       }
     } catch {
@@ -77,16 +79,10 @@ export default function HomePage() {
       hasUpcomingSuspensions: upcomingCount > 0,
       overallStatusHeadline: "Checking Tier 3 class-suspension reports across Metro Manila",
     });
-    setIsLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
-    loadData();
-
-    // Default select Manila on desktop on initial load if screen is large
-    if (typeof window !== "undefined" && window.innerWidth >= 1024) {
-      setSelectedLguId("manila");
-    }
+    void loadData();
 
     // Keyboard shortcut '/' or 'Ctrl+K' for school search
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -102,22 +98,42 @@ export default function HomePage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [loadData]);
+
+  useEffect(() => {
+    if (initialSelectionApplied.current) return;
+    initialSelectionApplied.current = true;
+
+    const lguId = getInitialDashboardSelection(new URLSearchParams(window.location.search).get("lgu"));
+    if (lguId) setSelectedLguId(lguId);
   }, []);
 
   const selectedLgu = lgus.find((l) => l.id === selectedLguId) || null;
+  const openSchoolSearch = useCallback(() => setIsSchoolSearchOpen(true), []);
+  const closeSchoolSearch = useCallback(() => setIsSchoolSearchOpen(false), []);
+  const selectLgu = useCallback((id: LGUId) => setSelectedLguId(id), []);
+  const clearSelection = useCallback(() => setSelectedLguId(null), []);
+  const selectLguFromList = useCallback((id: LGUId) => {
+    setSelectedLguId(id);
+    setViewMode("map");
+  }, []);
+  const selectLguFromSchool = useCallback((id: string) => {
+    setSelectedLguId(id as LGUId);
+    setViewMode("map");
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar onOpenSchoolSearch={() => setIsSchoolSearchOpen(true)} />
+      <Navbar onOpenSchoolSearch={openSchoolSearch} />
 
       <main className="dashboard-main flex-1 mx-auto w-full max-w-7xl 2xl:max-w-[min(90vw,1920px)] px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-5 space-y-5 sm:space-y-6">
         {/* Status Announcement Hero */}
         <StatusHero
           summary={summary}
           activeFilter={activeFilter}
-          onFilterChange={(f) => setActiveFilter(f)}
+          onFilterChange={setActiveFilter}
           viewMode={viewMode}
-          onViewModeChange={(m) => setViewMode(m)}
+          onViewModeChange={setViewMode}
           onRefresh={loadData}
         />
 
@@ -137,8 +153,8 @@ export default function HomePage() {
               <NcrInteractiveMap
                 lgus={lgus}
                 selectedLguId={selectedLguId}
-                onSelectLgu={(id) => setSelectedLguId(id)}
-                onClearSelection={() => setSelectedLguId(null)}
+                onSelectLgu={selectLgu}
+                onClearSelection={clearSelection}
                 statusFilter={activeFilter}
               />
             </div>
@@ -148,7 +164,7 @@ export default function HomePage() {
               {selectedLgu ? (
                 <LguDetailPanel
                   lgu={selectedLgu}
-                  onClose={() => setSelectedLguId(null)}
+                  onClose={clearSelection}
                 />
               ) : (
                 <div className="hidden lg:flex h-full rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 p-6 flex-col items-center justify-center text-center text-slate-400 space-y-3">
@@ -170,25 +186,21 @@ export default function HomePage() {
           <ListView
             lgus={lgus}
             selectedLguId={selectedLguId}
-            onSelectLgu={(id) => {
-              setSelectedLguId(id);
-              setViewMode("map");
-            }}
+            onSelectLgu={selectLguFromList}
             statusFilter={activeFilter}
           />
         )}
       </main>
 
       {/* School Finder Modal */}
-      <SchoolFinderModal
-        isOpen={isSchoolSearchOpen}
-        onClose={() => setIsSchoolSearchOpen(false)}
-        lgus={lgus}
-        onSelectLguFromSchool={(lguId) => {
-          setSelectedLguId(lguId as LGUId);
-          setViewMode("map");
-        }}
-      />
+      {isSchoolSearchOpen && (
+        <SchoolFinderModal
+          isOpen
+          onClose={closeSchoolSearch}
+          lgus={lgus}
+          onSelectLguFromSchool={selectLguFromSchool}
+        />
+      )}
 
       <Footer />
     </div>

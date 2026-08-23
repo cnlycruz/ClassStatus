@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 
-export function Navbar({ onOpenSchoolSearch }: { onOpenSchoolSearch?: () => void }) {
+export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch }: { onOpenSchoolSearch?: () => void }) {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
   const [timeStr, setTimeStr] = useState<string>("");
@@ -184,4 +184,4 @@ export function Navbar({ onOpenSchoolSearch }: { onOpenSchoolSearch?: () => void
       )}
     </header>
   );
-}
+});

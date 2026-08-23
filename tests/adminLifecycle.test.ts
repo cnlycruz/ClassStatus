@@ -41,6 +41,20 @@ describe("manual publication and durable removal lifecycle", () => {
     const original = await publish(); const key = randomUUID(); const first = await requestRemoval(original.id, 1, key, sessionId); const replay = await requestRemoval(original.id, 1, key, sessionId); expect(replay.id).toBe(first.id);
     await expect(undoRemoval(original.id, 1, randomUUID(), sessionId)).rejects.toThrow("stale-revision");
   });
+  it("requires canonical confirmation tokens, record IDs, and idempotency UUIDs", async () => {
+    const preview = await createPublicationPreview(draft(), sessionId);
+    await expect(publishManualSuspension({
+      draft: preview.normalizedDraft,
+      confirmationToken: `${preview.confirmationToken}.ignored`,
+      idempotencyKey: randomUUID(),
+    }, sessionId)).rejects.toThrow("confirmation-invalid");
+    await expect(publishManualSuspension({
+      draft: preview.normalizedDraft,
+      confirmationToken: preview.confirmationToken,
+      idempotencyKey: "------------------------------------",
+    }, sessionId)).rejects.toThrow("confirmation-invalid");
+    expect(() => requestRemoval("bad\u0000record", 1, randomUUID(), sessionId)).toThrow("record-id-invalid");
+  });
   it("fails closed when local JSON is selected in every Vercel environment", async () => {
     const previousVercel = process.env.VERCEL; const previousEnvironment = process.env.VERCEL_ENV;
     process.env.VERCEL = "1"; process.env.VERCEL_ENV = "preview";

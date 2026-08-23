@@ -57,7 +57,8 @@ const MAP_LABEL_PLACEMENTS: Record<string, MapLabelPlacement> = {
   taguig: { x: 470, y: 611, fontSize: 16, textAnchor: "middle" },
   pateros: { x: 503, y: 546, fontSize: 10, textAnchor: "middle" },
 };
-export function NcrInteractiveMap({
+
+export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
   lgus,
   selectedLguId,
   onSelectLgu,
@@ -65,20 +66,25 @@ export function NcrInteractiveMap({
   statusFilter,
 }: NcrInteractiveMapProps) {
   const [hoveredLguId, setHoveredLguId] = useState<LGUId | null>(null);
-  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
   // Pan and Zoom state
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const labelFontScale = 1 / Math.min(Math.max(scale, 0.7), 4);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   // Touch tracking for pinch-to-zoom
   const touchStartRef = useRef<{ dist: number; scale: number; pan: { x: number; y: number } } | null>(null);
   const gestureRef = useRef({ startX: 0, startY: 0, hasMoved: false, hasPinched: false });
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef(pan);
+  const pendingPanRef = useRef(pan);
+  const panFrameRef = useRef<number | null>(null);
+  const tooltipFrameRef = useRef<number | null>(null);
+  const pointerRef = useRef<{ x: number; y: number } | null>(null);
+  const dragStartRef = useRef({ x: 0, y: 0 });
 
   // Map LGU ID to status and data
   const lguMap = React.useMemo(() => {
@@ -87,38 +93,55 @@ export function NcrInteractiveMap({
     return map;
   }, [lgus]);
 
-  const handleZoom = (delta: number) => {
+  const handleZoom = useCallback((delta: number) => {
     setScale((prev) => Math.min(Math.max(prev + delta, 0.7), 4.0));
-  };
+  }, []);
 
-  const handleResetZoom = () => {
+  const handleResetZoom = useCallback(() => {
     setScale(1);
-    setPan({ x: 0, y: 0 });
-  };
-
-  // Center on selected LGU
-  const centerOnLgu = useCallback((lguId: LGUId) => {
-    const pathItem = NCR_GEO_PATHS.find((p) => p.lguId === lguId);
-    if (pathItem && containerRef.current) {
-      const containerWidth = containerRef.current.clientWidth;
-      const containerHeight = containerRef.current.clientHeight;
-
-      // Center of SVG coordinate space is 400, 500
-      // Target delta from center
-      const targetScale = 1.6;
-      const dx = (400 - pathItem.labelX) * targetScale * 0.8;
-      const dy = (500 - pathItem.labelY) * targetScale * 0.8;
-
-      setScale(targetScale);
-      setPan({ x: dx, y: dy });
+    if (panFrameRef.current) {
+      cancelAnimationFrame(panFrameRef.current);
+      panFrameRef.current = null;
     }
+    panRef.current = { x: 0, y: 0 };
+    pendingPanRef.current = panRef.current;
+    setPan(panRef.current);
   }, []);
 
   useEffect(() => {
-    if (selectedLguId) {
-      // Gentle center if not on mobile initial load
-    }
-  }, [selectedLguId, centerOnLgu]);
+    return () => {
+      if (panFrameRef.current) cancelAnimationFrame(panFrameRef.current);
+      if (tooltipFrameRef.current) cancelAnimationFrame(tooltipFrameRef.current);
+    };
+  }, []);
+
+  const schedulePan = useCallback((nextPan: { x: number; y: number }) => {
+    panRef.current = nextPan;
+    pendingPanRef.current = nextPan;
+    if (panFrameRef.current) return;
+
+    panFrameRef.current = requestAnimationFrame(() => {
+      panFrameRef.current = null;
+      setPan(pendingPanRef.current);
+    });
+  }, []);
+
+  const updateTooltipPosition = useCallback((clientX: number, clientY: number) => {
+    pointerRef.current = { x: clientX, y: clientY };
+    if (tooltipFrameRef.current) return;
+
+    tooltipFrameRef.current = requestAnimationFrame(() => {
+      tooltipFrameRef.current = null;
+      const container = containerRef.current;
+      const tooltip = tooltipRef.current;
+      const pointer = pointerRef.current;
+      if (!container || !tooltip || !pointer) return;
+
+      const rect = container.getBoundingClientRect();
+      tooltip.style.left = `${Math.min(Math.max(pointer.x - rect.left, 120), container.clientWidth - 120)}px`;
+      tooltip.style.top = `${Math.max(pointer.y - rect.top - 12, 10)}px`;
+    });
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -133,7 +156,7 @@ export function NcrInteractiveMap({
 
     container.addEventListener("wheel", handleNativeWheel, { passive: false });
     return () => container.removeEventListener("wheel", handleNativeWheel);
-  }, []);
+  }, [handleZoom]);
 
   // Mouse drag handlers
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -145,7 +168,7 @@ export function NcrInteractiveMap({
       hasPinched: false,
     };
     setIsDragging(true);
-    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+    dragStartRef.current = { x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -153,19 +176,13 @@ export function NcrInteractiveMap({
       if (Math.hypot(e.clientX - gestureRef.current.startX, e.clientY - gestureRef.current.startY) > 8) {
         gestureRef.current.hasMoved = true;
       }
-      setPan({
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y,
+      schedulePan({
+        x: e.clientX - dragStartRef.current.x,
+        y: e.clientY - dragStartRef.current.y,
       });
     }
 
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      setTooltipPos({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      });
-    }
+    updateTooltipPosition(e.clientX, e.clientY);
   };
 
   const handleMouseUp = () => {
@@ -182,10 +199,10 @@ export function NcrInteractiveMap({
         hasPinched: false,
       };
       setIsDragging(true);
-      setDragStart({
-        x: e.touches[0].clientX - pan.x,
-        y: e.touches[0].clientY - pan.y,
-      });
+      dragStartRef.current = {
+        x: e.touches[0].clientX - panRef.current.x,
+        y: e.touches[0].clientY - panRef.current.y,
+      };
     } else if (e.touches.length === 2) {
       gestureRef.current.hasPinched = true;
       gestureRef.current.hasMoved = true;
@@ -207,9 +224,9 @@ export function NcrInteractiveMap({
       ) {
         gestureRef.current.hasMoved = true;
       }
-      setPan({
-        x: e.touches[0].clientX - dragStart.x,
-        y: e.touches[0].clientY - dragStart.y,
+      schedulePan({
+        x: e.touches[0].clientX - dragStartRef.current.x,
+        y: e.touches[0].clientY - dragStartRef.current.y,
       });
     } else if (e.touches.length === 2 && touchStartRef.current) {
       const t1 = e.touches[0];
@@ -357,9 +374,6 @@ export function NcrInteractiveMap({
         }}
       >
         <defs>
-          <filter id="lgu-drop-shadow" x="-10%" y="-10%" width="120%" height="120%">
-            <feDropShadow dx="0" dy="3" stdDeviation="4" floodOpacity="0.3" />
-          </filter>
           <filter id="lgu-selected-glow" x="-20%" y="-20%" width="140%" height="140%">
             <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="#60A5FA" floodOpacity="0.8" />
           </filter>
@@ -388,7 +402,7 @@ export function NcrInteractiveMap({
                 strokeWidth={strokeWidth}
                 strokeLinejoin="round"
                 strokeLinecap="round"
-                filter={isSelected ? "url(#lgu-selected-glow)" : "url(#lgu-drop-shadow)"}
+                filter={isSelected ? "url(#lgu-selected-glow)" : undefined}
                 className="ncr-map-lgu transition-colors duration-150 outline-none"
                 tabIndex={0}
                 role="button"
@@ -483,16 +497,11 @@ export function NcrInteractiveMap({
       </svg>
 
       {/* Dynamic Hover Tooltip (Desktop) */}
-      {hoveredLguData && tooltipPos && (
+      {hoveredLguData && (
         <div
+          ref={tooltipRef}
           className="hidden sm:block absolute z-30 pointer-events-none bg-slate-900/95 text-white p-3 rounded-2xl shadow-2xl border border-slate-700/80 backdrop-blur-md max-w-xs -translate-x-1/2 -translate-y-full mb-3 animate-in fade-in zoom-in-95 duration-100"
-          style={{
-            left: `${Math.min(
-              Math.max(tooltipPos.x, 120),
-              (containerRef.current?.clientWidth || 400) - 120
-            )}px`,
-            top: `${Math.max(tooltipPos.y - 12, 10)}px`,
-          }}
+          style={{ left: "120px", top: "10px" }}
         >
           <div className="flex items-center justify-between gap-2 mb-1">
             <span className="font-bold text-sm text-white">{hoveredLguData.name}</span>
@@ -536,4 +545,4 @@ export function NcrInteractiveMap({
       )}
     </div>
   );
-}
+});

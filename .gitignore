@@ -6,3 +6,7 @@ coverage/
 data/admin_security.json
 data/*.lock
 *.tmp
+
+.vercel
+.env.local
+.env.*.local

@@ -54,7 +54,7 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch }: { onOpe
           <Link href="/" className="group flex min-w-0 items-center gap-2">
             <div className="relative h-8 w-8 shrink-0 transition-transform group-hover:scale-105 sm:h-9 sm:w-9">
               <Image
-                src="/LOGO.PNG"
+                src={theme === "dark" ? "/LOGODARK.png" : "/LOGO.PNG"}
                 alt="Class Status NCR"
                 width={36}
                 height={36}

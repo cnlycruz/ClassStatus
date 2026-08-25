@@ -171,7 +171,7 @@ export async function authenticateAndIssueAdminSession(identifier: string, passw
   try {
     const result = await supabaseSessionPolicyRpc("start_admin_session", {
       p_csrf_digest: sha256(csrfToken),
-      p_login_fingerprint: fingerprint(identifier),
+      p_login_fingerprint: sha256(fingerprint(identifier)),
     }, context);
     const policy = result.data as { sessionId?: unknown; absoluteExpiresAt?: unknown; idleExpiresAt?: unknown } | null;
     if (!policy || policy.sessionId !== sessionId || typeof policy.absoluteExpiresAt !== "string" || typeof policy.idleExpiresAt !== "string") throw new Error();

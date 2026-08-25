@@ -8,7 +8,7 @@ const migrationPath = path.join(
   process.cwd(),
   "supabase",
   "migrations",
-  "20260823083017_isolate_production_sessions_and_throttle.sql"
+  "20260823115228_isolate_production_sessions_and_throttle.sql"
 );
 
 describe("security deployment contracts", () => {
@@ -18,7 +18,7 @@ describe("security deployment contracts", () => {
       "20260823065312_classstatus_durable_state.sql",
       "20260823065639_harden_function_privileges.sql",
       "20260823070947_enforce_single_admin_principal.sql",
-      "20260823083017_isolate_production_sessions_and_throttle.sql",
+      "20260823115228_isolate_production_sessions_and_throttle.sql",
     ]));
   });
 

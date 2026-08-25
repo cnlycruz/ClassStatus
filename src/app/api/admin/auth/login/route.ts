@@ -27,9 +27,8 @@ export async function POST(request: NextRequest) {
       }
       return Response.json({ success: false, error: "AUTHENTICATION_FAILED" }, { status: 401, headers: { "Cache-Control": "no-store, private" } });
     }
-    // TEMP DEBUG: skip login audit
-    // try { await appendAudit({ action: "login", outcome: "success", correlationId: session.id }); }
-    // catch (error) { await revokeAdminSession(); throw error; }
+    try { await appendAudit({ action: "login", outcome: "success", correlationId: session.id }); }
+    catch (error) { await revokeAdminSession(); throw error; }
     return Response.json({ success: true, destination: "/collector" }, { headers: { "Cache-Control": "no-store, private" } });
   } catch (error) { return adminErrorResponse(error); }
 }

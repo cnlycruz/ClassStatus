@@ -95,8 +95,10 @@ describe("Supabase admin namespace boundaries", () => {
       expect.objectContaining({
         p_admin_user_id: mocks.adminUserId,
         p_admin_session_id: mocks.sessionId,
+        p_login_fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
       })
     );
+    expect(mocks.serviceRpc.mock.calls[0]?.[1]?.p_login_fingerprint).not.toBe("admin@example.com");
 
     await getAdminSession();
     await revokeAdminSession();
@@ -115,8 +117,15 @@ describe("Supabase admin namespace boundaries", () => {
     expect(await authenticateAndIssueAdminSession("admin@example.com", "password")).toMatchObject({ id: mocks.sessionId });
     expect(mocks.userRpc).toHaveBeenCalledWith(
       "classstatus_preview_start_admin_session",
-      expect.not.objectContaining({ p_admin_user_id: expect.anything(), p_admin_session_id: expect.anything() })
+      expect.objectContaining({
+        p_login_fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
+      })
     );
+    expect(mocks.userRpc.mock.calls[0]?.[1]).not.toEqual(expect.objectContaining({
+      p_admin_user_id: expect.anything(),
+      p_admin_session_id: expect.anything(),
+    }));
+    expect(mocks.userRpc.mock.calls[0]?.[1]?.p_login_fingerprint).not.toBe("admin@example.com");
     expect(mocks.serviceRpc).not.toHaveBeenCalled();
   });
 

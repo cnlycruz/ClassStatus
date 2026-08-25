@@ -50,7 +50,7 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch }: { onOpe
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 bg-white/90 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-950/90 transition-colors">
       <div className="flex h-16 w-full items-center px-2 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
         {/* Brand, time, and route navigation intentionally share one compact cluster. */}
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
           <Link href="/" className="group flex min-w-0 items-center gap-2">
             <div className="relative h-8 w-8 shrink-0 transition-transform group-hover:scale-105 sm:h-9 sm:w-9">
               <Image
@@ -82,7 +82,7 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch }: { onOpe
           </Link>
 
           {/* Live Philippine Time Clock */}
-          <div className="hidden lg:flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50/80 px-3.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-300 shadow-inner">
+          <div className="hidden lg:flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50/80 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-300 shadow-inner">
             <Clock className="h-3.5 w-3.5 text-blue-500 animate-pulse" />
             <span className="tabular-nums font-mono">{timeStr || "Loading PHT..."}</span>
             <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wider">
@@ -91,7 +91,7 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch }: { onOpe
           </div>
 
           {/* Desktop Navigation Links */}
-          <nav aria-label="Primary navigation" className="hidden min-w-0 items-center gap-1 xl:flex">
+          <nav aria-label="Primary navigation" className="hidden min-w-0 items-center gap-0.5 xl:flex">
             {navLinks.map((link) => {
               const Icon = link.icon;
               const isActive = pathname === link.href;
@@ -99,7 +99,7 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch }: { onOpe
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`flex whitespace-nowrap items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  className={`flex min-h-11 whitespace-nowrap items-center gap-1.5 rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
                     isActive
                       ? "bg-blue-50 text-blue-600 dark:bg-blue-950/70 dark:text-blue-400"
                       : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"

@@ -5,13 +5,13 @@ import { ShieldCheck, Clock, MapPin, ExternalLink, Heart } from "lucide-react";
 export function Footer() {
   return (
     <footer className="mt-16 border-t border-slate-200/80 bg-white/60 dark:border-slate-800/80 dark:bg-slate-950/60 backdrop-blur text-xs text-slate-500 dark:text-slate-400">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl 2xl:max-w-[min(90vw,1920px)] px-4 py-8 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
           {/* Brand & Purpose */}
           <div className="md:col-span-2 space-y-3">
             <div className="flex items-center gap-2">
               <span className="font-bold text-slate-900 dark:text-white text-sm">
-                ClassStatus NCR
+                Class Status NCR
               </span>
             </div>
             <p className="max-w-md leading-relaxed text-slate-600 dark:text-slate-400">
@@ -68,7 +68,7 @@ export function Footer() {
         </div>
 
         <div className="mt-8 pt-6 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px]">
-          <p>© {new Date().getFullYear()} ClassStatus NCR. Dedicated to Filipino students and educators.</p>
+          <p>© {new Date().getFullYear()} Class Status NCR. Dedicated to Filipino students and educators.</p>
         </div>
       </div>
     </footer>

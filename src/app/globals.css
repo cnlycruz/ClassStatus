@@ -135,27 +135,6 @@
   }
 }
 
-@media (min-width: 1024px) and (max-height: 900px) {
-  .lgu-detail-scroll-region {
-    display: block;
-    flex: 1 1 0%;
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-
-  .lgu-detail-scroll-region .lgu-detail-body {
-    flex: none;
-    min-height: auto;
-    overflow: visible;
-  }
-
-  .lgu-detail-scroll-region .lgu-detail-schools {
-    max-height: none;
-    overflow: visible;
-  }
-}
-
 @media (min-width: 1024px) and (max-height: 800px) {
   .lgu-detail-header,
   .lgu-detail-body,
@@ -170,6 +149,17 @@
 
   .lgu-detail-body {
     row-gap: 0.75rem;
+    overflow-y: auto;
+  }
+
+  /* On short desktops, keep all advisory details reachable through one body scroll. */
+  .lgu-detail-schools-section {
+    flex: 0 0 auto;
+    min-height: auto;
+  }
+
+  .lgu-detail-schools {
+    overflow: visible;
   }
 
   .lgu-detail-footer {

@@ -86,18 +86,18 @@ export default function SourcesPage() {
         </div>
 
         {/* Operational source search */}
-        <div className="flex items-center justify-between gap-3 pt-2">
+        <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs font-bold text-slate-500">
             {OPERATIONAL_COLLECTOR_SOURCES.length} operational sources
           </div>
-          <div className="relative max-w-xs w-full">
+          <div className="relative w-full sm:max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               type="text"
               placeholder="Search source by name or agency..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="min-h-11 w-full rounded-xl border border-slate-300 bg-white py-1.5 pl-9 pr-3 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
             />
           </div>
         </div>
@@ -107,10 +107,10 @@ export default function SourcesPage() {
           {filtered.map((source) => (
             <div
               key={source.id}
-              className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
+              className="grid gap-4 p-4 transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-800/40 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-5"
             >
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2.5">
+              <div className="min-w-0 space-y-2">
+                <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-start sm:gap-2.5">
                   <h4 className="font-bold text-slate-900 dark:text-white text-sm">{source.name}</h4>
                   <span
                     className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -123,7 +123,7 @@ export default function SourcesPage() {
                   </span>
                 </div>
 
-                <div className="text-xs text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                   <span>{source.organization}</span>
                   <span>•</span>
                   <span className="capitalize">{source.type.replace("-", " ")}</span>
@@ -132,9 +132,9 @@ export default function SourcesPage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 shrink-0">
-                <div className="text-right text-xs">
-                  <div className={`flex items-center gap-1.5 font-semibold justify-end ${source.operationalState === "operational" ? "text-emerald-600 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"}`}>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:justify-self-end sm:gap-4">
+                <div className="text-left text-xs sm:text-right">
+                  <div className={`flex items-center gap-1.5 font-semibold sm:justify-end ${source.operationalState === "operational" ? "text-emerald-600 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"}`}>
                     <span className={`h-2 w-2 rounded-full ${source.operationalState === "operational" ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
                     <span>{source.operationalState === "operational" ? "Operational" : "Under development"}</span>
                   </div>
@@ -147,8 +147,9 @@ export default function SourcesPage() {
                   href={source.publicUrl || source.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-2 rounded-xl text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 transition-colors"
+                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition-colors hover:bg-blue-100 hover:text-blue-700 dark:bg-blue-950/60"
                   title="Open Source URL"
+                  aria-label={`Open ${source.name} in a new tab`}
                 >
                   <ExternalLink className="h-4 w-4" />
                 </a>

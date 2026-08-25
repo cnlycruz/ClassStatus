@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { LGUInfo, SuspensionStatus, SuspensionRecord } from "@/types";
 import { NCR_SCHOOLS } from "@/data/schools";
+import { getNearestSheetSnap, getSheetSnapHeights, shouldDismissSheet } from "@/lib/bottomSheet";
 import {
   X,
   ShieldCheck,
@@ -32,6 +33,82 @@ interface LguDetailPanelProps {
 
 export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
   const [copied, setCopied] = useState(false);
+  const [sheetHeight, setSheetHeight] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isDismissing, setIsDismissing] = useState(false);
+  const dragRef = useRef<{
+    pointerId: number;
+    startY: number;
+    lastY: number;
+    startedAt: number;
+    startHeight: number;
+    viewportHeight: number;
+  } | null>(null);
+  const dismissTimerRef = useRef<number | null>(null);
+
+  const getViewportHeight = useCallback(() => {
+    if (typeof window === "undefined") return 0;
+    return Math.round(window.visualViewport?.height ?? window.innerHeight);
+  }, []);
+
+  const requestClose = useCallback(() => {
+    if (isDismissing) return;
+    if (!window.matchMedia("(max-width: 1023px)").matches) {
+      onClose();
+      return;
+    }
+    setIsDismissing(true);
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    dismissTimerRef.current = window.setTimeout(onClose, reducedMotion ? 0 : 180);
+  }, [isDismissing, onClose]);
+
+  useEffect(() => {
+    if (!lgu) return;
+
+    const clampSheetHeight = () => {
+      const viewportHeight = getViewportHeight();
+      const { expanded, normal } = getSheetSnapHeights(viewportHeight);
+      setSheetHeight((current) => Math.min(current ?? normal, expanded));
+    };
+
+    clampSheetHeight();
+    window.visualViewport?.addEventListener("resize", clampSheetHeight);
+    window.addEventListener("resize", clampSheetHeight);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", clampSheetHeight);
+      window.removeEventListener("resize", clampSheetHeight);
+    };
+  }, [getViewportHeight, lgu]);
+
+  useEffect(() => {
+    if (!lgu) return;
+
+    const mediaQuery = window.matchMedia("(max-width: 1023px)");
+    const originalOverflow = document.body.style.overflow;
+    const updateScrollLock = () => {
+      document.body.style.overflow = mediaQuery.matches ? "hidden" : originalOverflow;
+    };
+
+    updateScrollLock();
+    mediaQuery.addEventListener("change", updateScrollLock);
+    return () => {
+      mediaQuery.removeEventListener("change", updateScrollLock);
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [lgu]);
+
+  useEffect(() => {
+    if (!lgu) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") requestClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [lgu, requestClose]);
+
+  useEffect(() => () => {
+    if (dismissTimerRef.current !== null) window.clearTimeout(dismissTimerRef.current);
+  }, []);
 
   if (!lgu) return null;
 
@@ -49,7 +126,7 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
         : "Awaiting update";
 
     const shareMessage =
-      `🇵🇭 [ClassStatus NCR] ${lgu.name.toUpperCase()}: ${statusText}\n` +
+      `🇵🇭 [Class Status NCR] ${lgu.name.toUpperCase()}: ${statusText}\n` +
       `📅 Date: ${record?.effectiveDate || "Today"}\n` +
       `🎓 Levels: ${record?.affectedLevels.join(", ") || "All Levels"}\n` +
       `📌 Reason: ${record?.reason || "Normal classes"}\n` +
@@ -95,19 +172,92 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
   const badgeConfig = getStatusBadge(lgu.status);
   const StatusIcon = badgeConfig.icon;
 
-  const content = (
-    <div className="flex flex-col h-full bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl lg:rounded-2xl shadow-2xl lg:shadow-xl overflow-hidden transition-all">
+  const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const viewportHeight = getViewportHeight();
+    const { normal } = getSheetSnapHeights(viewportHeight);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      lastY: event.clientY,
+      startedAt: performance.now(),
+      startHeight: sheetHeight ?? normal,
+      viewportHeight,
+    };
+    setIsDragging(true);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const { expanded } = getSheetSnapHeights(drag.viewportHeight);
+    drag.lastY = event.clientY;
+    setSheetHeight(Math.max(0, Math.min(expanded, drag.startHeight + drag.startY - event.clientY)));
+  };
+
+  const finishDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    drag.lastY = event.clientY;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+
+    const dragDistance = drag.lastY - drag.startY;
+    const elapsed = Math.max(1, performance.now() - drag.startedAt);
+    const velocity = dragDistance / elapsed;
+    setIsDragging(false);
+
+    if (shouldDismissSheet({ dragDistance, velocity, viewportHeight: drag.viewportHeight })) {
+      requestClose();
+      return;
+    }
+
+    const currentHeight = Math.max(0, drag.startHeight - dragDistance);
+    const snap = getNearestSheetSnap(currentHeight, drag.viewportHeight);
+    setSheetHeight(getSheetSnapHeights(drag.viewportHeight)[snap]);
+  };
+
+  const cancelDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    setIsDragging(false);
+    const snap = getNearestSheetSnap(sheetHeight ?? drag.startHeight, drag.viewportHeight);
+    setSheetHeight(getSheetSnapHeights(drag.viewportHeight)[snap]);
+  };
+
+  const handleHandleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    const viewportHeight = getViewportHeight();
+    const heights = getSheetSnapHeights(viewportHeight);
+    setSheetHeight(event.key === "ArrowUp" ? heights.expanded : heights.compact);
+  };
+
+  const panelContent = (titleId?: string) => (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-2xl transition-all dark:border-slate-800 dark:bg-slate-900 lg:rounded-2xl lg:shadow-xl">
       {/* Drag handle on Mobile */}
-      <div className="lg:hidden w-full pt-3 pb-1 flex justify-center bg-slate-50 dark:bg-slate-950 cursor-grab active:cursor-grabbing">
+      <button
+        type="button"
+        className="flex min-h-11 w-full touch-none cursor-grab items-center justify-center bg-slate-50 py-3 active:cursor-grabbing dark:bg-slate-950 lg:hidden"
+        aria-label="Resize details panel. Use the up and down arrow keys to expand or compact it."
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishDrag}
+        onPointerCancel={cancelDrag}
+        onKeyDown={handleHandleKeyDown}
+      >
         <div className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700" />
-      </div>
+      </button>
 
       {/* Header */}
       <div className="lgu-detail-header shrink-0 p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/70">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+              <h2 id={titleId} className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                 {lgu.name}
               </h2>
               <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
@@ -119,7 +269,7 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
             </p>
           </div>
           <button
-            onClick={onClose}
+            onClick={requestClose}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition-colors"
             aria-label="Close details"
           >
@@ -146,12 +296,11 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
         </div>
       </div>
 
-      <div className="lgu-detail-scroll-region contents">
       {/* Body Content */}
-      <div className="lgu-detail-body p-4 sm:p-5 overflow-y-auto space-y-4 text-xs text-slate-600 dark:text-slate-300 flex-1 min-h-0 overscroll-contain">
+      <div className="lgu-detail-body flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-4 text-xs text-slate-600 dark:text-slate-300 sm:p-5 lg:overflow-hidden">
         {/* Affected Education Levels */}
         {record && (
-          <div className="space-y-2">
+          <div className="shrink-0 space-y-2">
             <h4 className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px]">
               Affected Education Levels
             </h4>
@@ -176,7 +325,7 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
         )}
 
         {/* Reason and Advisory Summary */}
-        <div className="space-y-2">
+        <div className="shrink-0 space-y-2">
           <h4 className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px]">
             Official Advisory & Reason
           </h4>
@@ -194,7 +343,7 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
 
         {/* Source Citation & Evidence Verification Box */}
         {record && (
-          <div className="space-y-2">
+          <div className="shrink-0 space-y-2">
             <h4 className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] flex items-center justify-between">
               <span>Source & Evidence</span>
               <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
@@ -210,7 +359,7 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
                   </div>
                   <div className="text-[10px] text-slate-500 dark:text-slate-400">
                     {record.publicationProvenance?.type === "manual-admin"
-                      ? "Manually verified by ClassStatus Admin"
+                      ? "Manually verified by Class Status Admin"
                       : `${record.source.organization} • Tier ${record.source.reliabilityTier} Media Report`}
                   </div>
                 </div>
@@ -242,11 +391,11 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
 
         {/* Major Schools in this LGU */}
         {lguSchools.length > 0 && (
-          <div className="space-y-2">
+          <div className="lgu-detail-schools-section space-y-2 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             <h4 className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px]">
               Major Schools in {lgu.name} ({lguSchools.length})
             </h4>
-            <div className="lgu-detail-schools space-y-1.5 max-h-44 overflow-y-auto pr-1">
+            <div className="lgu-detail-schools space-y-1.5 pr-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
               {lguSchools.map((school) => (
                 <div
                   key={school.id}
@@ -283,7 +432,7 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
       </div>
 
       {/* Action Footer */}
-      <div className="lgu-detail-footer p-3.5 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex items-center justify-between gap-2.5">
+      <div className="lgu-detail-footer shrink-0 p-3.5 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex items-center justify-between gap-2.5">
         <button
           onClick={handleShare}
           className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 font-bold text-xs transition-all shadow-md shadow-blue-500/25 active:scale-[0.98]"
@@ -311,20 +460,29 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
           <ExternalLink className="h-3.5 w-3.5" />
         </a>
       </div>
-      </div>
     </div>
   );
 
   return (
     <>
       {/* Desktop View (Sidebar Card) */}
-      <div className="hidden lg:block w-full h-full min-h-0">{content}</div>
+      <div className="hidden lg:block w-full h-full min-h-0">{panelContent()}</div>
 
       {/* Mobile View (Bottom Sheet Drawer with Backdrop) */}
-      <div className="lg:hidden fixed inset-0 z-50 flex flex-col justify-end bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="absolute inset-0" onClick={onClose} />
-        <div className="relative h-[min(82dvh,44rem)] w-full pb-[max(0.75rem,env(safe-area-inset-bottom))] z-10 animate-in slide-in-from-bottom duration-250 ease-out">
-          {content}
+      <div className="lg:hidden fixed inset-0 z-50 flex flex-col justify-end bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none">
+        <div className="absolute inset-0" onClick={requestClose} />
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="lgu-detail-title"
+          className={`relative z-10 box-border w-full pb-[max(0.75rem,env(safe-area-inset-bottom))] ease-out motion-reduce:transition-none ${isDragging ? "transition-none" : "transition-[height,transform] duration-200"}`}
+          style={{
+            height: sheetHeight ? `${sheetHeight}px` : "80dvh",
+            maxHeight: "calc(100dvh - max(env(safe-area-inset-top), 0.75rem))",
+            transform: isDismissing ? "translateY(100%)" : undefined,
+          }}
+        >
+          {panelContent("lgu-detail-title")}
         </div>
       </div>
     </>

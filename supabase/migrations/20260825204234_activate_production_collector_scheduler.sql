@@ -25,7 +25,7 @@ begin
   end if;
 
   select net.http_post(
-    url := 'https://class-status.vercel.app/api/cron/collector',
+    url := 'https://classstatus.vercel.app/api/cron/collector',
     headers := pg_catalog.jsonb_build_object(
       'Content-Type', 'application/json',
       'Authorization', 'Bearer ' || cron_secret

@@ -10,7 +10,6 @@ import { hmac, randomToken, safeEqual, sha256 } from "./crypto";
 import { securityStore } from "@/lib/storage";
 import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
 import {
-  createServiceSupabaseClient,
   createUserSupabaseClient,
   sessionIdFromAccessToken,
 } from "@/lib/supabase/server";
@@ -114,7 +113,6 @@ async function issueLocalAdminSession(): Promise<AdminSessionView> {
 
 type SupabaseAdminContext = {
   client: Awaited<ReturnType<typeof createUserSupabaseClient>>;
-  userId: string;
   sessionId: string;
 };
 
@@ -131,7 +129,6 @@ async function verifiedSupabaseAdminContext(
   if (sessionError || !accessToken) throw new Error("ADMIN_AUTH_UNAVAILABLE");
   return {
     client,
-    userId: userData.user.id,
     sessionId: sessionIdFromAccessToken(accessToken),
   };
 }
@@ -143,13 +140,7 @@ async function supabaseSessionPolicyRpc(
 ) {
   const namespace = getDeploymentNamespace();
   const context = suppliedContext || await verifiedSupabaseAdminContext();
-  const { data, error } = namespace === "preview"
-    ? await context.client.rpc(`classstatus_preview_${operation}`, args)
-    : await createServiceSupabaseClient().rpc(`classstatus_production_${operation}`, {
-        ...args,
-        p_admin_user_id: context.userId,
-        p_admin_session_id: context.sessionId,
-      });
+  const { data, error } = await context.client.rpc(`classstatus_${namespace}_${operation}`, args);
   if (error) throw new Error("ADMIN_AUTH_UNAVAILABLE");
   return { client: context.client, data };
 }
@@ -166,7 +157,7 @@ export async function authenticateAndIssueAdminSession(identifier: string, passw
     return null;
   }
   const sessionId = sessionIdFromAccessToken(data.session.access_token);
-  const context = { client, userId: data.user.id, sessionId };
+  const context = { client, sessionId };
   const csrfToken = supabaseCsrfFor(sessionId);
   try {
     const result = await supabaseSessionPolicyRpc("start_admin_session", {

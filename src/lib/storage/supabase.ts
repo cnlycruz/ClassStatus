@@ -4,12 +4,11 @@ import { getConfiguredAdminUserId } from "@/lib/admin/config";
 import type { AdminStateDocument, AuditEntry, ConfirmationReceipt } from "@/lib/admin/types";
 import {
   createPublicSupabaseClient,
-  createServiceSupabaseClient,
   createUserSupabaseClient,
   sessionIdFromAccessToken,
 } from "@/lib/supabase/server";
 import { isCollectorWorkerExecution } from "@/collector/executionContext";
-import { createPreviewCollectorCapability } from "@/lib/cron/collectorCapability";
+import { createCollectorCapability } from "@/lib/cron/collectorCapability";
 import type { CollectorLog, SuspensionRecord } from "@/types";
 import type { SuspensionStore } from "./contracts";
 import { getDeploymentNamespace } from "./driver";
@@ -31,23 +30,13 @@ async function verifiedAdminContext() {
   const { data: sessionData, error: sessionError } = await client.auth.getSession();
   const accessToken = sessionData.session?.access_token;
   if (sessionError || !accessToken) throw new Error("ADMIN_AUTH_UNAVAILABLE");
-  return { client, userId: userData.user.id, sessionId: sessionIdFromAccessToken(accessToken) };
+  return { client, sessionId: sessionIdFromAccessToken(accessToken) };
 }
 
 async function adminRpc(operation: string, args: Record<string, unknown> = {}): Promise<unknown> {
   const namespace = getDeploymentNamespace();
   const context = await verifiedAdminContext();
-  if (namespace === "preview") {
-    const { data, error } = await context.client.rpc(`classstatus_preview_${operation}`, args);
-    if (error) rpcError(error);
-    return data;
-  }
-  const client = createServiceSupabaseClient();
-  const { data, error } = await client.rpc(`classstatus_production_${operation}`, {
-    ...args,
-    p_admin_user_id: context.userId,
-    p_admin_session_id: context.sessionId,
-  });
+  const { data, error } = await context.client.rpc(`classstatus_${namespace}_${operation}`, args);
   if (error) rpcError(error);
   return data;
 }
@@ -55,20 +44,19 @@ async function adminRpc(operation: string, args: Record<string, unknown> = {}): 
 async function collectorRpc(operation: string, args: Record<string, unknown> = {}): Promise<unknown> {
   if (!isCollectorWorkerExecution()) return adminRpc(operation, args);
   const namespace = getDeploymentNamespace();
-  if (namespace !== "preview") throw new Error("ADMIN_STORAGE_UNAVAILABLE");
   const client = createPublicSupabaseClient();
   let rpcOperation: string;
-  let proof: ReturnType<typeof createPreviewCollectorCapability>;
+  let proof: ReturnType<typeof createCollectorCapability>;
   if (operation === "upsert_collected") {
-    rpcOperation = "classstatus_preview_worker_upsert_collected";
-    proof = createPreviewCollectorCapability("record.upsert", {
+    rpcOperation = `classstatus_${namespace}_worker_upsert_collected`;
+    proof = createCollectorCapability("record.upsert", {
       record: args.p_record,
       eventKey: args.p_event_key,
       conflictKey: args.p_conflict_key,
     });
   } else if (operation === "append_collector_logs") {
-    rpcOperation = "classstatus_preview_worker_append_collector_logs";
-    proof = createPreviewCollectorCapability("logs.append", { logs: args.p_logs });
+    rpcOperation = `classstatus_${namespace}_worker_append_collector_logs`;
+    proof = createCollectorCapability("logs.append", { logs: args.p_logs });
   } else {
     throw new Error("ADMIN_STORAGE_UNAVAILABLE");
   }

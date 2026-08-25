@@ -10,11 +10,23 @@ const migrationPath = path.join(
   "migrations",
   "20260823115228_isolate_production_sessions_and_throttle.sql"
 );
+const durableStateMigrationPath = path.join(
+  process.cwd(),
+  "supabase",
+  "migrations",
+  "20260823065312_classstatus_durable_state.sql"
+);
 const collectorFixMigrationPath = path.join(
   process.cwd(),
   "supabase",
   "migrations",
   "20260825135623_fix_collector_log_run_id_ambiguity.sql"
+);
+const productionRuntimeMigrationPath = path.join(
+  process.cwd(),
+  "supabase",
+  "migrations",
+  "20260825203903_add_production_runtime_security_support.sql"
 );
 
 describe("security deployment contracts", () => {
@@ -26,6 +38,8 @@ describe("security deployment contracts", () => {
       "20260823070947_enforce_single_admin_principal.sql",
       "20260823115228_isolate_production_sessions_and_throttle.sql",
       "20260825135623_fix_collector_log_run_id_ambiguity.sql",
+      "20260825203903_add_production_runtime_security_support.sql",
+      "20260825204234_activate_production_collector_scheduler.sql",
     ]));
   });
 
@@ -64,6 +78,41 @@ describe("security deployment contracts", () => {
     expect(migration).toContain("classstatus_production_revoke_admin_session(uuid, uuid)");
     expect(migration).toMatch(/grant execute on function public\.classstatus_production_start_admin_session\(text, text, uuid, uuid\)\s+to service_role/i);
     expect(migration).not.toMatch(/grant execute on function public\.classstatus_production_(?:start|touch|revoke)_admin_session[\s\S]{0,100}to authenticated/i);
+  });
+
+  it("adds authenticated Production RPCs without a secret-key runtime caller", () => {
+    const migration = fs.readFileSync(productionRuntimeMigrationPath, "utf8");
+    const authSource = fs.readFileSync(path.join(process.cwd(), "src", "lib", "admin", "auth.ts"), "utf8");
+    const serverSource = fs.readFileSync(path.join(process.cwd(), "src", "lib", "supabase", "server.ts"), "utf8");
+    const storageSource = fs.readFileSync(path.join(process.cwd(), "src", "lib", "storage", "supabase.ts"), "utf8");
+
+    expect(migration).toMatch(/grant execute on function public\.classstatus_production_start_admin_session\(text, text\)\s+to authenticated;/i);
+    expect(migration).toMatch(/grant execute on function public\.classstatus_production_admin_snapshot\(\)\s+to authenticated;/i);
+    expect(migration).toContain("and guard.absolute_expires_at > clock_timestamp()");
+    expect(migration).toContain("and guard.last_seen_at > clock_timestamp() - interval '30 minutes'");
+    expect(migration).toContain(
+      "perform 1 from classstatus_private.resolve_admin_actor(p_namespace)"
+    );
+    expect(migration).toContain("caller_role = 'service_role'");
+    expect(authSource).not.toContain("createServiceSupabaseClient");
+    expect(serverSource).not.toContain("createServiceSupabaseClient");
+    expect(serverSource).not.toContain("getSupabaseSecretKey");
+    expect(storageSource).not.toContain("createServiceSupabaseClient");
+  });
+
+  it("preserves the single-session, eight-hour absolute, and thirty-minute idle policy", () => {
+    const durableStateMigration = fs.readFileSync(durableStateMigrationPath, "utf8");
+    const productionRuntimeMigration = fs.readFileSync(productionRuntimeMigrationPath, "utf8");
+
+    expect(durableStateMigration).toContain("absolute_at timestamptz := now_at + interval '8 hours'");
+    expect(durableStateMigration).toContain("on conflict (deployment_namespace) do update");
+    expect(durableStateMigration).toContain("'idleExpiresAt', now_at + interval '30 minutes'");
+    expect(productionRuntimeMigration).toContain(
+      "select classstatus_private.start_admin_session(\n    'production', p_csrf_digest, p_login_fingerprint"
+    );
+    expect(productionRuntimeMigration).toContain(
+      "select classstatus_private.touch_admin_session('production', p_touch)"
+    );
   });
 
   it("projects public records without administrative or collector internals", () => {

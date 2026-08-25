@@ -71,4 +71,27 @@ describe("scheduled collector endpoint", () => {
     expect(route).not.toContain("requireAdminMutation");
     expect(route).not.toContain("/api/collector/run");
   });
+
+  it("does not pass caller-controlled namespace inputs into collector execution", async () => {
+    const maliciousRequest = new NextRequest(
+      "https://class-status.vercel.app/api/cron/collector?namespace=preview",
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${secret}`,
+          "content-type": "application/json",
+          "x-classstatus-namespace": "preview",
+          cookie: "deployment_namespace=preview",
+        },
+        body: JSON.stringify({ namespace: "preview" }),
+      }
+    );
+    expect((await POST(maliciousRequest)).status).toBe(200);
+    expect(executionMocks.runScheduledCollectorWithLease).toHaveBeenCalledWith();
+    const route = fs.readFileSync(
+      path.join(process.cwd(), "src", "app", "api", "cron", "collector", "route.ts"),
+      "utf8"
+    );
+    expect(route).not.toMatch(/searchParams|cookies\(|request\.json\(|x-classstatus-namespace/i);
+  });
 });

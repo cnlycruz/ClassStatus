@@ -3,7 +3,6 @@ import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { getSupabaseSecretKey } from "@/lib/admin/config";
 import { getSupabaseRuntimeConfig } from "./runtimeConfig";
 
 function hardenedCookieOptions<T extends Record<string, unknown>>(options: T): T & {
@@ -41,13 +40,6 @@ export async function createUserSupabaseClient() {
 export function createPublicSupabaseClient() {
   const { url, publishableKey } = getSupabaseRuntimeConfig();
   return createClient(url, publishableKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  });
-}
-
-export function createServiceSupabaseClient() {
-  const { url } = getSupabaseRuntimeConfig();
-  return createClient(url, getSupabaseSecretKey(), {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 }

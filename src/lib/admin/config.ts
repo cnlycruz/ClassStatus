@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
+import { getStorageDriver } from "@/lib/storage/driver";
 
 export interface AdminConfig {
   username: string;
@@ -65,13 +65,6 @@ export function getPublicOrigin(): string {
     if (process.env.VERCEL === "1" && parsed.protocol !== "https:") throw new Error();
     return parsed.origin;
   } catch { throw new Error("ADMIN_AUTH_UNAVAILABLE"); }
-}
-
-export function getSupabaseSecretKey(): string {
-  if (getDeploymentNamespace() !== "production") throw new Error("ADMIN_STORAGE_UNAVAILABLE");
-  const secret = process.env.SUPABASE_SECRET_KEY?.trim();
-  if (!secret) throw new Error("ADMIN_STORAGE_UNAVAILABLE");
-  return secret;
 }
 
 export function adminCookieName(): string {

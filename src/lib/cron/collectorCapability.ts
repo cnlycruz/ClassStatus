@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { getCronSecret } from "@/lib/cron/authorization";
 import { getDeploymentNamespace } from "@/lib/storage/driver";
+import type { DeploymentNamespace } from "@/lib/storage/contracts";
 
 export const COLLECTOR_CAPABILITY_VERSION = "classstatus-collector-v1";
 
@@ -14,7 +15,7 @@ export const COLLECTOR_CAPABILITY_ACTIONS = [
 export type CollectorCapabilityAction = (typeof COLLECTOR_CAPABILITY_ACTIONS)[number];
 
 interface CollectorCapabilityInput {
-  namespace: "preview";
+  namespace: DeploymentNamespace;
   action: CollectorCapabilityAction;
   payload: string;
   issuedAt: number;
@@ -45,7 +46,9 @@ export function buildCollectorCapabilityMessage(input: Omit<CollectorCapabilityI
 }
 
 export function signCollectorCapability(input: CollectorCapabilityInput): CollectorCapabilityRpcArgs {
-  if (input.namespace !== "preview") throw new Error("COLLECTOR_CAPABILITY_UNAVAILABLE");
+  if (input.namespace !== "preview" && input.namespace !== "production") {
+    throw new Error("COLLECTOR_CAPABILITY_UNAVAILABLE");
+  }
   if (!COLLECTOR_CAPABILITY_ACTIONS.includes(input.action)) throw new Error("COLLECTOR_CAPABILITY_UNAVAILABLE");
   if (!Number.isSafeInteger(input.issuedAt) || input.issuedAt <= 0) throw new Error("COLLECTOR_CAPABILITY_UNAVAILABLE");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(input.nonce)) {
@@ -62,15 +65,15 @@ export function signCollectorCapability(input: CollectorCapabilityInput): Collec
   };
 }
 
-export function createPreviewCollectorCapability(
+export function createCollectorCapability(
   action: CollectorCapabilityAction,
   payload: unknown
 ): CollectorCapabilityRpcArgs {
-  if (getDeploymentNamespace() !== "preview") throw new Error("COLLECTOR_CAPABILITY_UNAVAILABLE");
+  const namespace = getDeploymentNamespace();
   const serializedPayload = JSON.stringify(payload);
   if (serializedPayload === undefined) throw new Error("COLLECTOR_CAPABILITY_UNAVAILABLE");
   return signCollectorCapability({
-    namespace: "preview",
+    namespace,
     action,
     payload: serializedPayload,
     issuedAt: Math.floor(Date.now() / 1000),

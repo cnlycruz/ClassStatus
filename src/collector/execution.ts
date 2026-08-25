@@ -7,10 +7,9 @@ import { globalCollector } from "@/collector/engine";
 import { isCollectorWorkerExecution, withCollectorWorkerExecution } from "@/collector/executionContext";
 import {
   createPublicSupabaseClient,
-  createServiceSupabaseClient,
   createUserSupabaseClient,
 } from "@/lib/supabase/server";
-import { createPreviewCollectorCapability } from "@/lib/cron/collectorCapability";
+import { createCollectorCapability } from "@/lib/cron/collectorCapability";
 import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
 import type { CollectorSummary } from "@/types";
 import type { DeploymentNamespace } from "@/lib/storage/contracts";
@@ -89,37 +88,35 @@ const localCollectorLease: CollectorLease = {
   },
 };
 
-async function collectorLeaseClient(namespace: DeploymentNamespace): Promise<SupabaseClient> {
+async function collectorLeaseClient(): Promise<SupabaseClient> {
   if (isCollectorWorkerExecution()) {
-    if (namespace !== "preview") throw new Error("COLLECTOR_LEASE_UNAVAILABLE");
     return createPublicSupabaseClient();
   }
-  if (namespace === "preview") return createUserSupabaseClient();
-  return createServiceSupabaseClient();
+  return createUserSupabaseClient();
 }
 
 const supabaseCollectorLease: CollectorLease = {
   async acquire(namespace, ownerToken) {
-    const client = await collectorLeaseClient(namespace);
+    const client = await collectorLeaseClient();
     const scheduled = isCollectorWorkerExecution();
     const operation = scheduled
-      ? "classstatus_preview_worker_acquire_collector_lease"
+      ? `classstatus_${namespace}_worker_acquire_collector_lease`
       : `classstatus_${namespace}_acquire_collector_lease`;
     const args = scheduled
-      ? createPreviewCollectorCapability("lease.acquire", { ownerToken })
+      ? createCollectorCapability("lease.acquire", { ownerToken })
       : { p_owner_token: ownerToken };
     const { data, error } = await client.rpc(operation, args);
     if (error) throw new Error("COLLECTOR_LEASE_UNAVAILABLE");
     return data === true;
   },
   async release(namespace, ownerToken) {
-    const client = await collectorLeaseClient(namespace);
+    const client = await collectorLeaseClient();
     const scheduled = isCollectorWorkerExecution();
     const operation = scheduled
-      ? "classstatus_preview_worker_release_collector_lease"
+      ? `classstatus_${namespace}_worker_release_collector_lease`
       : `classstatus_${namespace}_release_collector_lease`;
     const args = scheduled
-      ? createPreviewCollectorCapability("lease.release", { ownerToken })
+      ? createCollectorCapability("lease.release", { ownerToken })
       : { p_owner_token: ownerToken };
     const { error } = await client.rpc(operation, args);
     if (error) throw new Error("COLLECTOR_LEASE_UNAVAILABLE");

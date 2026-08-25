@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => {
   const adminUserId = "22222222-2222-4222-8222-222222222222";
   const state = { namespace: "production" as "preview" | "production", signedInUserId: adminUserId };
   const userRpc = vi.fn();
-  const serviceRpc = vi.fn();
   const publicRpc = vi.fn();
   const signOut = vi.fn(async () => ({ error: null }));
   const userClient = {
@@ -28,7 +27,6 @@ const mocks = vi.hoisted(() => {
     adminUserId,
     state,
     userRpc,
-    serviceRpc,
     publicRpc,
     signOut,
     userClient,
@@ -56,7 +54,6 @@ vi.mock("@/lib/storage", () => ({
 
 vi.mock("@/lib/supabase/server", () => ({
   createUserSupabaseClient: async () => mocks.userClient,
-  createServiceSupabaseClient: () => ({ rpc: mocks.serviceRpc }),
   createPublicSupabaseClient: () => ({ rpc: mocks.publicRpc }),
   sessionIdFromAccessToken: () => mocks.sessionId,
 }));
@@ -84,31 +81,31 @@ describe("Supabase admin namespace boundaries", () => {
     mocks.state.signedInUserId = mocks.adminUserId;
     vi.clearAllMocks();
     mocks.userRpc.mockImplementation(async (operation: string) => ({ data: sessionPolicy(operation), error: null }));
-    mocks.serviceRpc.mockImplementation(async (operation: string) => ({ data: sessionPolicy(operation), error: null }));
   });
 
-  it("uses only the service client for Production session-guard writes", async () => {
+  it("uses only the authenticated user client for Production session-guard writes", async () => {
     expect(await authenticateAndIssueAdminSession("admin@example.com", "password")).toMatchObject({ id: mocks.sessionId });
-    expect(mocks.userRpc).not.toHaveBeenCalled();
-    expect(mocks.serviceRpc).toHaveBeenCalledWith(
+    expect(mocks.userRpc).toHaveBeenCalledWith(
       "classstatus_production_start_admin_session",
       expect.objectContaining({
-        p_admin_user_id: mocks.adminUserId,
-        p_admin_session_id: mocks.sessionId,
         p_login_fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
       })
     );
-    expect(mocks.serviceRpc.mock.calls[0]?.[1]?.p_login_fingerprint).not.toBe("admin@example.com");
+    expect(mocks.userRpc.mock.calls[0]?.[1]).not.toEqual(expect.objectContaining({
+      p_admin_user_id: expect.anything(),
+      p_admin_session_id: expect.anything(),
+    }));
+    expect(mocks.userRpc.mock.calls[0]?.[1]?.p_login_fingerprint).not.toBe("admin@example.com");
 
     await getAdminSession();
     await revokeAdminSession();
-    expect(mocks.serviceRpc).toHaveBeenCalledWith(
+    expect(mocks.userRpc).toHaveBeenCalledWith(
       "classstatus_production_touch_admin_session",
-      expect.objectContaining({ p_admin_user_id: mocks.adminUserId, p_admin_session_id: mocks.sessionId })
+      expect.objectContaining({ p_touch: true })
     );
-    expect(mocks.serviceRpc).toHaveBeenCalledWith(
+    expect(mocks.userRpc).toHaveBeenCalledWith(
       "classstatus_production_revoke_admin_session",
-      expect.objectContaining({ p_admin_user_id: mocks.adminUserId, p_admin_session_id: mocks.sessionId })
+      {}
     );
   });
 
@@ -126,7 +123,6 @@ describe("Supabase admin namespace boundaries", () => {
       p_admin_session_id: expect.anything(),
     }));
     expect(mocks.userRpc.mock.calls[0]?.[1]?.p_login_fingerprint).not.toBe("admin@example.com");
-    expect(mocks.serviceRpc).not.toHaveBeenCalled();
   });
 
   it("rejects an authenticated non-admin UUID before every policy RPC", async () => {
@@ -134,7 +130,6 @@ describe("Supabase admin namespace boundaries", () => {
     expect(await authenticateAndIssueAdminSession("user@example.com", "password")).toBeNull();
     expect(await getAdminSession()).toBeNull();
     expect(mocks.userRpc).not.toHaveBeenCalled();
-    expect(mocks.serviceRpc).not.toHaveBeenCalled();
   });
 
   it("does not expose a hosted failure-recording RPC", async () => {

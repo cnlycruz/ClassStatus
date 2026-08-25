@@ -158,6 +158,14 @@ npm test
 
 ## 🔧 Developer Guides
 
+### Production Operations
+
+Production uses authenticated Supabase administrator sessions and narrowly
+scoped signed collector RPCs with the publishable key. The hosted application
+does not require a Supabase secret/service-role key. See
+[`PRODUCTION_CUTOVER.md`](PRODUCTION_CUTOVER.md) for the two-migration launch,
+verification, Preview retirement, and rollback procedure.
+
 ### How to Add a New Collector Source
 1. Open `src/data/sources.ts`.
 2. Add the source with an explicit `operationalState`. Only approved Tier 3 `news-reputable` entries are eligible for live collection.

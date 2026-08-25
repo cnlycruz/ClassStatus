@@ -5,6 +5,8 @@ import { COLLECTOR_SOURCES, OPERATIONAL_COLLECTOR_SOURCES } from "@/data/sources
 
 const read = (...parts: string[]) => fs.readFileSync(path.join(process.cwd(), ...parts), "utf8");
 const migration = "20260825162450_add_preview_collector_schedule_and_lease.sql";
+const productionRuntimeMigration = "20260825203903_add_production_runtime_security_support.sql";
+const productionSchedulerMigration = "20260825204234_activate_production_collector_scheduler.sql";
 
 describe("near-live update contracts", () => {
   it("advertises exactly one-minute polling only for the operational Tier 3 sources", () => {
@@ -78,5 +80,25 @@ describe("near-live update contracts", () => {
     const template = read(".env.example");
     expect(template).toContain("CLASSSTATUS_CRON_SECRET=");
     expect(template).not.toContain("NEXT_PUBLIC_CLASSSTATUS_CRON_SECRET");
+  });
+
+  it("keeps Production runtime support separate from scheduler activation", () => {
+    const runtimeSql = read("supabase", "migrations", productionRuntimeMigration);
+    const schedulerSql = read("supabase", "migrations", productionSchedulerMigration);
+    expect(runtimeSql).not.toContain("cron.schedule");
+    expect(runtimeSql).not.toContain("classstatus-production-collector-every-minute");
+    expect(runtimeSql).not.toContain("https://class-status.vercel.app/api/cron/collector");
+    expect(schedulerSql).toContain("classstatus-production-collector-every-minute");
+    expect(schedulerSql).toContain("https://class-status.vercel.app/api/cron/collector");
+    expect(schedulerSql).toContain("classstatus-production-cron-secret");
+    expect(schedulerSql).not.toContain("classstatus-preview-collector-every-minute");
+    expect(schedulerSql).not.toContain("cron.unschedule");
+  });
+
+  it("uses Vercel's configured main Production branch without repository overrides", () => {
+    expect(fs.existsSync(path.join(process.cwd(), "vercel.json"))).toBe(false);
+    const runbook = read("PRODUCTION_CUTOVER.md");
+    expect(runbook).toContain("Production Branch is `main`");
+    expect(runbook).toContain("git merge --ff-only deployment-preview");
   });
 });

@@ -48,7 +48,7 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch }: { onOpe
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 bg-white/90 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-950/90 transition-colors">
-      <div className="flex h-16 w-full items-center px-2 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
+      <div className="mx-auto flex h-16 w-full max-w-7xl items-center px-3 sm:px-6 lg:px-8 2xl:max-w-[min(90vw,1920px)]">
         {/* Brand, time, and route navigation intentionally share one compact cluster. */}
         <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
           <Link href="/" className="group flex min-w-0 items-center gap-2">

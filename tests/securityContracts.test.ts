@@ -10,6 +10,12 @@ const migrationPath = path.join(
   "migrations",
   "20260823115228_isolate_production_sessions_and_throttle.sql"
 );
+const collectorFixMigrationPath = path.join(
+  process.cwd(),
+  "supabase",
+  "migrations",
+  "20260825135623_fix_collector_log_run_id_ambiguity.sql"
+);
 
 describe("security deployment contracts", () => {
   it("keeps committed migration versions aligned with the deployed history", () => {
@@ -19,7 +25,25 @@ describe("security deployment contracts", () => {
       "20260823065639_harden_function_privileges.sql",
       "20260823070947_enforce_single_admin_principal.sql",
       "20260823115228_isolate_production_sessions_and_throttle.sql",
+      "20260825135623_fix_collector_log_run_id_ambiguity.sql",
     ]));
+  });
+
+  it("keeps the collector run upsert unambiguous and private", () => {
+    const migration = fs.readFileSync(collectorFixMigrationPath, "utf8");
+    expect(migration).toContain("resolved_run_id text;");
+    expect(migration).not.toMatch(/\brun_id text;/);
+    expect(migration).toContain(
+      "on conflict on constraint classstatus_collector_runs_pkey do update"
+    );
+    expect(migration).toMatch(
+      /create or replace function classstatus_private\.append_collector_logs\([\s\S]*?security definer\s+set search_path = ''/i
+    );
+    expect(migration).toMatch(
+      /revoke execute on function classstatus_private\.append_collector_logs\(text, jsonb, uuid, uuid\)\s+from public, anon, authenticated, service_role;/i
+    );
+    expect(migration).not.toContain("create or replace function public.");
+    expect(migration).not.toMatch(/grant execute/i);
   });
 
   it("removes the anonymous failure writer that could manufacture global lockouts", () => {

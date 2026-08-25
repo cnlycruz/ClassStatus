@@ -48,14 +48,14 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch }: { onOpe
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 bg-white/90 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-950/90 transition-colors">
-      <div className="flex h-16 w-full items-center gap-3 px-2 sm:gap-5 sm:px-6 lg:gap-6 lg:px-8 xl:px-10 2xl:px-12">
-        {/* Brand Logo */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Link href="/" className="flex items-center gap-2 group">
+      <div className="flex h-16 w-full items-center px-2 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
+        {/* Brand, time, and route navigation intentionally share one compact cluster. */}
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <Link href="/" className="group flex min-w-0 items-center gap-2">
             <div className="relative h-8 w-8 shrink-0 transition-transform group-hover:scale-105 sm:h-9 sm:w-9">
               <Image
                 src="/LOGO.PNG"
-                alt="ClassStatus NCR"
+                alt="Class Status NCR"
                 width={36}
                 height={36}
                 priority
@@ -69,7 +69,7 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch }: { onOpe
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="font-bold text-slate-900 dark:text-white tracking-tight text-base sm:text-lg">
-                  ClassStatus
+                  Class Status
                 </span>
                 <span className="rounded bg-blue-100 px-1 py-0.2 text-[10px] sm:text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                   NCR
@@ -80,21 +80,18 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch }: { onOpe
               </p>
             </div>
           </Link>
-        </div>
 
-        {/* Live Philippine Time Clock */}
-        <div className="hidden lg:flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50/80 px-3.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-300 shadow-inner">
-          <Clock className="h-3.5 w-3.5 text-blue-500 animate-pulse" />
-          <span className="tabular-nums font-mono">{timeStr || "Loading PHT..."}</span>
-          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wider">
-            ● LIVE
-          </span>
-        </div>
+          {/* Live Philippine Time Clock */}
+          <div className="hidden lg:flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50/80 px-3.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-300 shadow-inner">
+            <Clock className="h-3.5 w-3.5 text-blue-500 animate-pulse" />
+            <span className="tabular-nums font-mono">{timeStr || "Loading PHT..."}</span>
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold uppercase tracking-wider">
+              ● LIVE
+            </span>
+          </div>
 
-        {/* Action Controls & Navigation */}
-        <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5 sm:gap-3 xl:justify-start">
           {/* Desktop Navigation Links */}
-          <nav className="hidden min-w-0 flex-1 items-center gap-1 xl:flex xl:pr-2">
+          <nav aria-label="Primary navigation" className="hidden min-w-0 items-center gap-1 xl:flex">
             {navLinks.map((link) => {
               const Icon = link.icon;
               const isActive = pathname === link.href;
@@ -114,6 +111,10 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch }: { onOpe
               );
             })}
           </nav>
+        </div>
+
+        {/* Utility controls stay right aligned; ml-auto absorbs the desktop space after About. */}
+        <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-3">
 
           {/* The global school/LGU search is the single primary lookup entry point. */}
           {onOpenSchoolSearch && (

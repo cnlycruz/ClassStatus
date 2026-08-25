@@ -1,4 +1,4 @@
-# 🇵🇭 ClassStatus NCR — Metro Manila Class Suspension Tracker
+# 🇵🇭 Class Status NCR — Metro Manila Class Suspension Tracker
 
 > **“May pasok ba?”** — Real-time interactive class suspension status and automated advisory collector for all 17 Metro Manila Local Government Units (LGUs).
 
@@ -6,7 +6,7 @@
 
 ## 🌟 Overview & Highlights
 
-**ClassStatus NCR** is an end-to-end web application for students, parents, and educators in the National Capital Region (NCR), Philippines. It tracks evidence-backed reports from approved media sources while preserving links to the reporting article.
+**Class Status NCR** is an end-to-end web application for students, parents, and educators in the National Capital Region (NCR), Philippines. It tracks evidence-backed reports from approved media sources while preserving links to the reporting article.
 
 ### ✨ Key Features
 
@@ -172,4 +172,4 @@ npm test
 
 ## ⚖️ Legal & Attribution Disclaimer
 
-ClassStatus NCR is an open, independent public utility created for Filipino students and educators. Official declarations issued directly by respective Local Government Units, City Mayors, the Department of Education (DepEd), and individual university administrations remain the ultimate legal authority on class attendance.
+Class Status NCR is an open, independent public utility created for Filipino students and educators. Official declarations issued directly by respective Local Government Units, City Mayors, the Department of Education (DepEd), and individual university administrations remain the ultimate legal authority on class attendance.

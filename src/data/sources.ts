@@ -22,7 +22,7 @@ export const OPERATIONAL_COLLECTOR_SOURCES: CollectorSourceConfig[] = [
     url: "https://www.rappler.com/topic/class-suspensions/",
     type: "news-reputable",
     reliabilityTier: 3,
-    checkIntervalMinutes: 10,
+    checkIntervalMinutes: 1,
     ...operational,
   },
   {
@@ -32,7 +32,7 @@ export const OPERATIONAL_COLLECTOR_SOURCES: CollectorSourceConfig[] = [
     url: "https://data.gmanetwork.com/gno/rss/serbisyopubliko/walangpasok/feed.xml",
     type: "news-reputable",
     reliabilityTier: 3,
-    checkIntervalMinutes: 10,
+    checkIntervalMinutes: 1,
     ...operational,
   },
 ];

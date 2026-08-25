@@ -5,6 +5,9 @@ import { deriveLGUStatus } from "@/collector/lifecycle";
 import { formatManilaDateReadable, formatManilaTime } from "@/utils/philippineTime";
 import { projectPublicSuspension } from "@/lib/admin/publicProjection";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
   const records = await getSuspensions();
 
@@ -65,5 +68,5 @@ export async function GET() {
       overallStatusHeadline: overallHeadline,
     },
     lgus: lgusData,
-  });
+  }, { headers: { "Cache-Control": "no-store" } });
 }

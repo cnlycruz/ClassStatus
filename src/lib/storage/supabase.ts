@@ -8,6 +8,8 @@ import {
   createUserSupabaseClient,
   sessionIdFromAccessToken,
 } from "@/lib/supabase/server";
+import { isCollectorWorkerExecution } from "@/collector/executionContext";
+import { createPreviewCollectorCapability } from "@/lib/cron/collectorCapability";
 import type { CollectorLog, SuspensionRecord } from "@/types";
 import type { SuspensionStore } from "./contracts";
 import { getDeploymentNamespace } from "./driver";
@@ -46,6 +48,31 @@ async function adminRpc(operation: string, args: Record<string, unknown> = {}): 
     p_admin_user_id: context.userId,
     p_admin_session_id: context.sessionId,
   });
+  if (error) rpcError(error);
+  return data;
+}
+
+async function collectorRpc(operation: string, args: Record<string, unknown> = {}): Promise<unknown> {
+  if (!isCollectorWorkerExecution()) return adminRpc(operation, args);
+  const namespace = getDeploymentNamespace();
+  if (namespace !== "preview") throw new Error("ADMIN_STORAGE_UNAVAILABLE");
+  const client = createPublicSupabaseClient();
+  let rpcOperation: string;
+  let proof: ReturnType<typeof createPreviewCollectorCapability>;
+  if (operation === "upsert_collected") {
+    rpcOperation = "classstatus_preview_worker_upsert_collected";
+    proof = createPreviewCollectorCapability("record.upsert", {
+      record: args.p_record,
+      eventKey: args.p_event_key,
+      conflictKey: args.p_conflict_key,
+    });
+  } else if (operation === "append_collector_logs") {
+    rpcOperation = "classstatus_preview_worker_append_collector_logs";
+    proof = createPreviewCollectorCapability("logs.append", { logs: args.p_logs });
+  } else {
+    throw new Error("ADMIN_STORAGE_UNAVAILABLE");
+  }
+  const { data, error } = await client.rpc(rpcOperation, proof);
   if (error) rpcError(error);
   return data;
 }
@@ -118,7 +145,7 @@ export const supabaseSuspensionStore: SuspensionStore = {
     return value as { entries: AuditEntry[]; total: number };
   },
   async upsertCollected(input) {
-    const value = z.object({ action: z.enum(["created", "updated", "merged", "held"]), record: recordSchema, reason: z.string().optional() }).parse(await adminRpc("upsert_collected", {
+    const value = z.object({ action: z.enum(["created", "updated", "merged", "held"]), record: recordSchema, reason: z.string().optional() }).parse(await collectorRpc("upsert_collected", {
       p_record: input.candidate,
       p_event_key: input.eventKey,
       p_conflict_key: input.conflictKey,
@@ -129,7 +156,7 @@ export const supabaseSuspensionStore: SuspensionStore = {
     throw new Error("operation-unavailable");
   },
   async appendCollectorLogs(logs) {
-    await adminRpc("append_collector_logs", { p_logs: logs });
+    await collectorRpc("append_collector_logs", { p_logs: logs });
   },
   async listCollectorLogs(limit = 200) {
     return z.array(z.object({ id: z.string(), timestamp: z.string(), level: z.enum(["info", "warn", "error", "success"]), sourceId: z.string(), sourceName: z.string(), message: z.string() }).passthrough()).parse(await adminRpc("list_collector_logs", { p_limit: limit })) as CollectorLog[];

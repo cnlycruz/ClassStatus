@@ -9,6 +9,7 @@ import { NcrInteractiveMap } from "@/components/NcrInteractiveMap";
 import { ALL_LGU_IDS, NCR_LGUS } from "@/data/lgus";
 import { LGUId, LGUInfo, MayPasokSummary, SuspensionRecord, SuspensionStatus } from "@/types";
 import { getInitialDashboardSelection } from "@/lib/dashboardSelection";
+import { startVisibilityAwareDashboardRefresh } from "@/lib/dashboardRefresh";
 import { MapPin, Compass } from "lucide-react";
 
 const LguDetailPanel = dynamic(() => import("@/components/LguDetailPanel").then((module) => module.LguDetailPanel));
@@ -17,6 +18,9 @@ const SchoolFinderModal = dynamic(() => import("@/components/SchoolFinderModal")
 
 export default function HomePage() {
   const initialSelectionApplied = useRef(false);
+  const hasDashboardData = useRef(false);
+  const activeDashboardRequest = useRef<Promise<void> | null>(null);
+  const dashboardAbortController = useRef<AbortController | null>(null);
   const [lgus, setLgus] = useState<
     (LGUInfo & {
       status: SuspensionStatus;
@@ -32,53 +36,55 @@ export default function HomePage() {
   const [viewMode, setViewMode] = useState<"map" | "list">("map");
   const [isSchoolSearchOpen, setIsSchoolSearchOpen] = useState(false);
 
-  // Initialize data
-  const loadData = useCallback(async () => {
-    try {
-      const res = await fetch("/api/lgus");
-      if (res.ok) {
+  const loadData = useCallback((): Promise<void> => {
+    if (activeDashboardRequest.current) return activeDashboardRequest.current;
+
+    const controller = new AbortController();
+    dashboardAbortController.current = controller;
+    const request = (async () => {
+      try {
+        const res = await fetch("/api/lgus", { cache: "no-store", signal: controller.signal });
+        if (!res.ok) throw new Error("DASHBOARD_REFRESH_FAILED");
         const json = await res.json();
         setLgus(json.lgus);
         setSummary(json.summary);
-        return;
+        hasDashboardData.current = true;
+      } catch (error) {
+        if (controller.signal.aborted || hasDashboardData.current) return;
+
+        // Safe initial fallback: a temporary failure never replaces already-visible data.
+        const computedLgus = ALL_LGU_IDS.map((id) => ({
+          ...NCR_LGUS[id],
+          status: "awaiting-information" as const,
+          primaryRecord: undefined,
+          hasUpcoming: false,
+          upcomingRecord: undefined,
+          activeRecords: [],
+        }));
+        setLgus(computedLgus);
+        setSummary({
+          updatedAt: new Date().toISOString(),
+          philippineTimeFormatted: "Asia/Manila (UTC+8)",
+          todayDateFormatted: "Today",
+          totalLgus: ALL_LGU_IDS.length,
+          suspendedCount: 0,
+          partialCount: 0,
+          continueCount: 0,
+          awaitingCount: ALL_LGU_IDS.length,
+          upcomingCount: 0,
+          hasUpcomingSuspensions: false,
+          overallStatusHeadline: "Checking Tier 3 class-suspension reports across Metro Manila",
+        });
+        hasDashboardData.current = true;
       }
-    } catch {
-      // fallback
-    }
+    })();
 
-    // Safe fallback: network/API failure must never synthesize a suspension.
-    const computedLgus = ALL_LGU_IDS.map((id) => {
-      const info = NCR_LGUS[id];
-      return {
-        ...info,
-        status: "awaiting-information" as const,
-        primaryRecord: undefined,
-        hasUpcoming: false,
-        upcomingRecord: undefined,
-        activeRecords: [],
-      };
+    activeDashboardRequest.current = request;
+    void request.finally(() => {
+      if (activeDashboardRequest.current === request) activeDashboardRequest.current = null;
+      if (dashboardAbortController.current === controller) dashboardAbortController.current = null;
     });
-
-    const suspendedCount = 0;
-    const partialCount = 0;
-    const continueCount = 0;
-    const awaitingCount = ALL_LGU_IDS.length;
-    const upcomingCount = 0;
-
-    setLgus(computedLgus);
-    setSummary({
-      updatedAt: new Date().toISOString(),
-      philippineTimeFormatted: "Asia/Manila (UTC+8)",
-      todayDateFormatted: "Today",
-      totalLgus: 17,
-      suspendedCount,
-      partialCount,
-      continueCount,
-      awaitingCount,
-      upcomingCount,
-      hasUpcomingSuspensions: upcomingCount > 0,
-      overallStatusHeadline: "Checking Tier 3 class-suspension reports across Metro Manila",
-    });
+    return request;
   }, []);
 
   useEffect(() => {
@@ -97,8 +103,16 @@ export default function HomePage() {
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      dashboardAbortController.current?.abort();
+    };
   }, [loadData]);
+
+  useEffect(() => startVisibilityAwareDashboardRefresh({
+    visibilityTarget: document,
+    refresh: loadData,
+  }), [loadData]);
 
   useEffect(() => {
     if (initialSelectionApplied.current) return;

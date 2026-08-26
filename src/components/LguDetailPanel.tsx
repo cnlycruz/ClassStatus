@@ -131,7 +131,7 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
       `🎓 Levels: ${record?.affectedLevels.join(", ") || "All Levels"}\n` +
       `📌 Reason: ${record?.reason || "Normal classes"}\n` +
       `🔗 Source: ${record?.source.name || "Official LGU Desk"} (${record?.source.url || ""})\n` +
-      `Checked at: https://classstatus-ncr.ph`;
+      `Checked at: https://classstatus.vercel.app`;
 
     if (navigator.clipboard) {
       await navigator.clipboard.writeText(shareMessage);

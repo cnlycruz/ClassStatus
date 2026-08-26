@@ -7,7 +7,7 @@ steps or retire Preview before the five-run Production soak gate passes.
 
 - Git: `main` only after retirement
 - Vercel: Production Branch `main`
-- Public origin: `https://class-status.vercel.app`
+- Public origin: `https://classstatus.vercel.app`
 - Supabase application namespace: `production`
 - Scheduled collector: every minute
 - Public dashboard refresh: every 30 seconds while visible; immediate refresh
@@ -32,7 +32,7 @@ CLASSSTATUS_SECURITY_PEPPER=<production value>
 CLASSSTATUS_CRON_SECRET=<new production cron secret>
 SUPABASE_URL=https://fyupnqsdfkqfrjcypues.supabase.co
 SUPABASE_PUBLISHABLE_KEY=<existing publishable key>
-CLASSSTATUS_PUBLIC_ORIGIN=https://class-status.vercel.app
+CLASSSTATUS_PUBLIC_ORIGIN=https://classstatus.vercel.app
 ```
 
 Do not add `NEXT_PUBLIC_` variants. Do not configure `SUPABASE_SECRET_KEY` for
@@ -124,7 +124,7 @@ that no unrelated branding file or `tsconfig.tsbuildinfo` is staged. Do not use
 7. Wait for the `main` deployment to become READY. Record its deployment ID for
    rollback.
 8. Before scheduler activation, verify:
-   - `https://class-status.vercel.app/` returns the dashboard;
+   - `https://classstatus.vercel.app/` returns the dashboard;
    - `/api/lgus`, `/api/suspensions`, and `/api/schools` return successful,
      uncached Production responses;
    - Production responses contain no Preview records;

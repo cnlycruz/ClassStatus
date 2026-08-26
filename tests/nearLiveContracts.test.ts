@@ -89,7 +89,7 @@ describe("near-live update contracts", () => {
     expect(runtimeSql).not.toContain("classstatus-production-collector-every-minute");
     expect(runtimeSql).not.toContain("https://class-status.vercel.app/api/cron/collector");
     expect(schedulerSql).toContain("classstatus-production-collector-every-minute");
-    expect(schedulerSql).toContain("https://class-status.vercel.app/api/cron/collector");
+    expect(schedulerSql).toContain("https://classstatus.vercel.app/api/cron/collector");
     expect(schedulerSql).toContain("classstatus-production-cron-secret");
     expect(schedulerSql).not.toContain("classstatus-preview-collector-every-minute");
     expect(schedulerSql).not.toContain("cron.unschedule");

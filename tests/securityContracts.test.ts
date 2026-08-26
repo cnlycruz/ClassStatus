@@ -107,8 +107,8 @@ describe("security deployment contracts", () => {
     expect(durableStateMigration).toContain("absolute_at timestamptz := now_at + interval '8 hours'");
     expect(durableStateMigration).toContain("on conflict (deployment_namespace) do update");
     expect(durableStateMigration).toContain("'idleExpiresAt', now_at + interval '30 minutes'");
-    expect(productionRuntimeMigration).toContain(
-      "select classstatus_private.start_admin_session(\n    'production', p_csrf_digest, p_login_fingerprint"
+    expect(productionRuntimeMigration).toMatch(
+      /select\s+classstatus_private\.start_admin_session\(\s*'production'\s*,\s*p_csrf_digest\s*,\s*p_login_fingerprint\s*\)/i
     );
     expect(productionRuntimeMigration).toContain(
       "select classstatus_private.touch_admin_session('production', p_touch)"

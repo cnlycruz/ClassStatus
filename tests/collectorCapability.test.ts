@@ -200,7 +200,7 @@ describe("signed worker migration boundary", () => {
     expect(schedulerSql).toContain("classstatus-production-cron-secret");
     expect(schedulerSql).toContain("classstatus-production-collector-every-minute");
     expect(schedulerSql).toContain("'* * * * *'");
-    expect(schedulerSql).toContain("https://class-status.vercel.app/api/cron/collector");
+    expect(schedulerSql).toContain("https://classstatus.vercel.app/api/cron/collector");
     expect(schedulerSql).not.toContain("cron.unschedule");
     expect(schedulerSql).not.toContain("classstatus-preview-collector-every-minute");
     expect(schedulerSql).not.toMatch(/Authorization',\s*'Bearer [^']/);

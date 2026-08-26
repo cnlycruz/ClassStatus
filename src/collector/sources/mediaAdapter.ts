@@ -1,4 +1,6 @@
 import { createHash } from "crypto";
+import { lookup } from "node:dns/promises";
+import { BlockList, isIP } from "node:net";
 import * as cheerio from "cheerio";
 import { CollectorSourceConfig } from "@/types";
 import { RawAnnouncementItem, SourceCollectorAdapter, SourceDiscoveryResult } from "./types";
@@ -14,7 +16,41 @@ const BROWSER_HEADERS = {
 };
 
 const DISCOVERY_LOOKBACK_MS = 96 * 60 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 10_000;
+const MAX_REDIRECTS = 5;
+const MAX_RESPONSE_BODY_BYTES = 2 * 1024 * 1024;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const RELEVANT_TEXT = /(walang\s*pasok|class(?:es)?\s+(?:suspension|suspended|cancel)|no\s+(?:face-to-face\s+)?classes)/i;
+
+const BLOCKED_IPV4_DESTINATIONS = new BlockList();
+[
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.0.0.0", 24],
+  ["192.0.2.0", 24],
+  ["192.88.99.0", 24],
+  ["192.168.0.0", 16],
+  ["198.18.0.0", 15],
+  ["198.51.100.0", 24],
+  ["203.0.113.0", 24],
+  ["224.0.0.0", 4],
+  ["240.0.0.0", 4],
+].forEach(([network, prefix]) => BLOCKED_IPV4_DESTINATIONS.addSubnet(network as string, prefix as number, "ipv4"));
+
+const BLOCKED_IPV6_DESTINATIONS = new BlockList();
+[
+  ["::", 3],
+  ["4000::", 2],
+  ["8000::", 1],
+  ["2001::", 23],
+  ["2001:db8::", 32],
+  ["2002::", 16],
+  ["3fff::", 20],
+].forEach(([network, prefix]) => BLOCKED_IPV6_DESTINATIONS.addSubnet(network as string, prefix as number, "ipv6"));
 
 export interface MediaSourceProfile {
   allowedDomains: string[];
@@ -70,6 +106,112 @@ function normalizedHost(hostname: string): string {
 function isAllowedUrl(url: URL, profile: MediaSourceProfile): boolean {
   const host = normalizedHost(url.hostname);
   return profile.allowedDomains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+}
+
+function sourceDestination(value: string, profile: MediaSourceProfile, baseUrl?: URL): URL {
+  let url: URL;
+  try {
+    url = baseUrl ? new URL(value, baseUrl) : new URL(value);
+  } catch {
+    throw new SourceFetchError("Source destination is malformed");
+  }
+  url.hash = "";
+  if (
+    url.protocol !== "https:" ||
+    url.username.length > 0 ||
+    url.password.length > 0 ||
+    url.port.length > 0 ||
+    !isAllowedUrl(url, profile)
+  ) {
+    throw new SourceFetchError("Source destination is not permitted");
+  }
+  return url;
+}
+
+function addressWithoutBrackets(address: string): string {
+  return address.startsWith("[") && address.endsWith("]") ? address.slice(1, -1) : address;
+}
+
+function isPublicAddress(address: string): boolean {
+  const normalized = addressWithoutBrackets(address);
+  if (normalized.includes("%")) return false;
+  const family = isIP(normalized);
+  if (family === 4) return !BLOCKED_IPV4_DESTINATIONS.check(normalized, "ipv4");
+  if (family === 6) return !BLOCKED_IPV6_DESTINATIONS.check(normalized, "ipv6");
+  return false;
+}
+
+async function lookupWithAbort(hostname: string, signal: AbortSignal): Promise<Array<{ address: string; family: number }>> {
+  if (signal.aborted) throw new SourceFetchError("Source request was aborted");
+  let removeAbortListener = () => {};
+  const aborted = new Promise<never>((_resolve, reject) => {
+    const onAbort = () => reject(new SourceFetchError("Source request was aborted"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    removeAbortListener = () => signal.removeEventListener("abort", onAbort);
+  });
+  try {
+    return await Promise.race([lookup(hostname, { all: true, verbatim: true }), aborted]);
+  } catch (error) {
+    if (error instanceof SourceFetchError) throw error;
+    throw new SourceFetchError("Source destination could not be resolved");
+  } finally {
+    removeAbortListener();
+  }
+}
+
+async function validateResolvedDestination(url: URL, signal: AbortSignal): Promise<void> {
+  const hostname = addressWithoutBrackets(url.hostname);
+  const literalFamily = isIP(hostname);
+  if (literalFamily !== 0) {
+    if (!isPublicAddress(hostname)) throw new SourceFetchError("Source destination is not permitted");
+    return;
+  }
+  const addresses = await lookupWithAbort(hostname, signal);
+  if (addresses.length === 0 || addresses.some(({ address }) => !isPublicAddress(address))) {
+    throw new SourceFetchError("Source destination is not permitted");
+  }
+}
+
+async function cancelOversizedResponse(response: Response, controller: AbortController): Promise<never> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The shared abort below still closes the request if stream cancellation fails.
+  }
+  controller.abort();
+  throw new SourceFetchError("Source response exceeded the size limit");
+}
+
+async function readBoundedBody(response: Response, controller: AbortController): Promise<string> {
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > MAX_RESPONSE_BODY_BYTES) {
+    return cancelOversizedResponse(response, controller);
+  }
+  if (!response.body) return "";
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_RESPONSE_BODY_BYTES) {
+        try {
+          await reader.cancel();
+        } catch {
+          // The shared abort below still closes the request if stream cancellation fails.
+        }
+        controller.abort();
+        throw new SourceFetchError("Source response exceeded the size limit");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), totalBytes).toString("utf8");
 }
 
 function absoluteUrl(value: string, baseUrl: string): URL | null {
@@ -332,24 +474,35 @@ async function fetchDocument(
   profile: MediaSourceProfile
 ): Promise<{ body: string; finalUrl: string; contentType: string }> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetchImpl(url, {
-      headers: BROWSER_HEADERS,
-      redirect: "follow",
-      signal: controller.signal,
-    });
-    const finalUrl = new URL(response.url || url);
-    if (!response.ok) throw new SourceFetchError(`HTTP ${response.status} from ${url}`, response.status);
-    if (!isAllowedUrl(finalUrl, profile)) throw new SourceFetchError(`Disallowed redirect to ${finalUrl.hostname}`);
-    return {
-      body: await response.text(),
-      finalUrl: finalUrl.toString(),
-      contentType: response.headers.get("content-type") || "",
-    };
+    let currentUrl = sourceDestination(url, profile);
+    let redirectCount = 0;
+    while (true) {
+      await validateResolvedDestination(currentUrl, controller.signal);
+      const response = await fetchImpl(currentUrl.toString(), {
+        headers: { ...BROWSER_HEADERS },
+        redirect: "manual",
+        signal: controller.signal,
+      });
+      if (REDIRECT_STATUSES.has(response.status)) {
+        if (redirectCount >= MAX_REDIRECTS) throw new SourceFetchError("Source redirected too many times");
+        const location = response.headers.get("location");
+        if (!location) throw new SourceFetchError("Source redirect was missing a destination");
+        currentUrl = sourceDestination(location, profile, currentUrl);
+        redirectCount++;
+        continue;
+      }
+      if (!response.ok) throw new SourceFetchError(`Approved source returned HTTP ${response.status}`, response.status);
+      return {
+        body: await readBoundedBody(response, controller),
+        finalUrl: currentUrl.toString(),
+        contentType: response.headers.get("content-type") || "",
+      };
+    }
   } catch (error) {
     if (error instanceof SourceFetchError) throw error;
-    throw new SourceFetchError(error instanceof Error ? error.message : String(error));
+    throw new SourceFetchError(controller.signal.aborted ? "Source request was aborted" : "Source request failed");
   } finally {
     clearTimeout(timeout);
   }

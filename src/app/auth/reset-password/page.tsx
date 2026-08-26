@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { getConfiguredAdminUserId } from "@/lib/admin/config";
 import { getSupabaseRuntimeConfig } from "@/lib/supabase/runtimeConfig";
 import { ResetPasswordForm } from "./ResetPasswordForm";
 
@@ -12,5 +11,5 @@ export const metadata: Metadata = {
 
 export default function ResetPasswordPage() {
   const config = getSupabaseRuntimeConfig();
-  return <ResetPasswordForm adminUserId={getConfiguredAdminUserId()} supabaseUrl={config.url} supabasePublishableKey={config.publishableKey} />;
+  return <ResetPasswordForm supabaseUrl={config.url} supabasePublishableKey={config.publishableKey} />;
 }

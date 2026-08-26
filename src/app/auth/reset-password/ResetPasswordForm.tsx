@@ -3,10 +3,15 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { KeyRound, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { recoveryErrorFromLocation, validateRecoveryPassword } from "@/lib/supabase/passwordRecovery";
+import {
+  authorizeRecoveryAccessToken,
+  authorizeRecoverySession,
+  completeRecoveryPasswordUpdate,
+  recoveryErrorFromLocation,
+  validateRecoveryPassword,
+} from "@/lib/supabase/passwordRecovery";
 
 interface ResetPasswordFormProps {
-  adminUserId: string;
   supabaseUrl: string;
   supabasePublishableKey: string;
 }
@@ -17,7 +22,7 @@ function clearRecoveryParameters(): void {
   window.history.replaceState({}, document.title, window.location.pathname);
 }
 
-export function ResetPasswordForm({ adminUserId, supabaseUrl, supabasePublishableKey }: ResetPasswordFormProps) {
+export function ResetPasswordForm({ supabaseUrl, supabasePublishableKey }: ResetPasswordFormProps) {
   const clientRef = useRef<SupabaseClient | null>(null);
   const [state, setState] = useState<RecoveryState>("checking");
   const [password, setPassword] = useState("");
@@ -45,12 +50,11 @@ export function ResetPasswordForm({ adminUserId, supabaseUrl, supabasePublishabl
     let active = true;
     let accepted = false;
 
-    const acceptSession = async (userId?: string) => {
+    const acceptSession = async (accessToken?: string) => {
       if (!active) return;
       accepted = true;
       clearRecoveryParameters();
-      if (userId !== adminUserId) {
-        await client.auth.signOut({ scope: "local" }).catch(() => undefined);
+      if (!(await authorizeRecoverySession(client, accessToken, authorizeRecoveryAccessToken))) {
         if (!active) return;
         setMessage("This recovery link is not authorized for the ClassStatus administrator.");
         setState("invalid");
@@ -61,12 +65,12 @@ export function ResetPasswordForm({ adminUserId, supabaseUrl, supabasePublishabl
     };
 
     const { data: listener } = client.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY") void acceptSession(session?.user.id);
+      if (event === "PASSWORD_RECOVERY") void acceptSession(session?.access_token);
     });
 
     void client.auth.getSession().then(({ data, error }) => {
       if (!active || accepted) return;
-      if (!error && data.session) void acceptSession(data.session.user.id);
+      if (!error && data.session) void acceptSession(data.session.access_token);
       else {
         clearRecoveryParameters();
         setMessage("This recovery link is invalid or has expired. Request one new reset email and use its newest link.");
@@ -79,7 +83,7 @@ export function ResetPasswordForm({ adminUserId, supabaseUrl, supabasePublishabl
       listener.subscription.unsubscribe();
       clientRef.current = null;
     };
-  }, [adminUserId, supabasePublishableKey, supabaseUrl]);
+  }, [supabasePublishableKey, supabaseUrl]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -98,11 +102,7 @@ export function ResetPasswordForm({ adminUserId, supabaseUrl, supabasePublishabl
     setBusy(true);
     setMessage("");
     try {
-      const { data: userData, error: userError } = await client.auth.getUser();
-      if (userError || userData.user?.id !== adminUserId) throw new Error("RECOVERY_NOT_AUTHORIZED");
-      const { error } = await client.auth.updateUser({ password });
-      if (error) throw error;
-      await client.auth.signOut({ scope: "global" }).catch(() => undefined);
+      await completeRecoveryPasswordUpdate(client, password);
       setPassword("");
       setConfirmation("");
       setMessage("Password updated. Your recovery session has been revoked; you can now sign in securely.");

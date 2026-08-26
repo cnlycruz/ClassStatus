@@ -15,6 +15,7 @@ import type { CollectorSummary } from "@/types";
 import type { DeploymentNamespace } from "@/lib/storage/contracts";
 
 export const COLLECTOR_LEASE_TTL_MS = 5 * 60 * 1000;
+export const PRODUCTION_COLLECTOR_LEASE_TTL_MS = 7 * 60 * 1000;
 
 export interface CollectorLease {
   acquire(namespace: DeploymentNamespace, ownerToken: string): Promise<boolean>;
@@ -71,12 +72,15 @@ const localCollectorLease: CollectorLease = {
   async acquire(namespace, ownerToken) {
     return mutateLocalLeases((leases) => {
       const now = Date.now();
+      const leaseTtlMs = namespace === "production"
+        ? PRODUCTION_COLLECTOR_LEASE_TTL_MS
+        : COLLECTOR_LEASE_TTL_MS;
       const current = leases[namespace];
       if (current && current.ownerToken !== ownerToken && Date.parse(current.expiresAt) > now) return false;
       leases[namespace] = {
         ownerToken,
         acquiredAt: new Date(now).toISOString(),
-        expiresAt: new Date(now + COLLECTOR_LEASE_TTL_MS).toISOString(),
+        expiresAt: new Date(now + leaseTtlMs).toISOString(),
       };
       return true;
     });

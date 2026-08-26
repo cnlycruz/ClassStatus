@@ -57,6 +57,14 @@ describe("hosted collector lease clients", () => {
     );
     const firstProof = mocks.publicRpc.mock.calls[0]?.[1];
     const secondProof = mocks.publicRpc.mock.calls[1]?.[1];
+    expect(firstProof).toEqual({
+      p_payload: expect.any(String),
+      p_issued_at: expect.any(Number),
+      p_nonce: expect.any(String),
+      p_signature: expect.any(String),
+    });
+    expect(Object.keys(JSON.parse(firstProof.p_payload))).toEqual(["ownerToken"]);
+    expect(Object.keys(JSON.parse(secondProof.p_payload))).toEqual(["ownerToken"]);
     expect(firstProof.p_nonce).not.toBe(secondProof.p_nonce);
     expect(firstProof.p_signature).not.toBe(secondProof.p_signature);
     expect(mocks.userRpc).not.toHaveBeenCalled();
@@ -74,6 +82,10 @@ describe("hosted collector lease clients", () => {
       "classstatus_production_release_collector_lease",
       expect.objectContaining({ p_owner_token: expect.any(String) })
     );
+    const acquireArgs = mocks.userRpc.mock.calls[0]?.[1];
+    const releaseArgs = mocks.userRpc.mock.calls[1]?.[1];
+    expect(Object.keys(acquireArgs)).toEqual(["p_owner_token"]);
+    expect(releaseArgs).toEqual({ p_owner_token: acquireArgs.p_owner_token });
     expect(mocks.publicRpc).not.toHaveBeenCalled();
   });
 

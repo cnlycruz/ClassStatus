@@ -4,6 +4,11 @@ import { describe, expect, it } from "vitest";
 
 const filename = "20260828090012_stabilize_collector_notice_identity.sql";
 const sql = fs.readFileSync(path.join(process.cwd(), "supabase", "migrations", filename), "utf8");
+const correctionFilename = "20260828135913_fix_collector_v2_corroboration_noop.sql";
+const correctionSql = fs.readFileSync(
+  path.join(process.cwd(), "supabase", "migrations", correctionFilename),
+  "utf8"
+);
 const adminUi = fs.readFileSync(path.join(process.cwd(), "src", "app", "collector", "AdminConsoleClient.tsx"), "utf8");
 const packageJson = fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8");
 
@@ -91,5 +96,34 @@ describe("collector data-integrity migration contract", () => {
     expect(sql).toContain("revoke execute on all functions in schema classstatus_private");
     expect(sql).not.toContain("cron.schedule");
     expect(sql).not.toContain("cron.unschedule");
+  });
+
+  it("uses a forward migration for compatible repeated corroborator no-ops", () => {
+    expect(correctionSql).toContain("candidate_is_primary boolean");
+    expect(correctionSql).toContain("and not candidate_is_primary");
+    expect(correctionSql).toContain("and relation = 'equal'");
+    expect(correctionSql).toContain("existing.record ->> 'status' = p_record ->> 'status'");
+    const corroboratorNoop = correctionSql.indexOf("and not candidate_is_primary");
+    const primaryConflict = correctionSql.indexOf("collector-policy-version-conflict", corroboratorNoop);
+    expect(corroboratorNoop).toBeGreaterThan(0);
+    expect(primaryConflict).toBeGreaterThan(corroboratorNoop);
+  });
+
+  it("marks every successful v2 mutation with parser policy v2", () => {
+    const mergedRecord = correctionSql.slice(correctionSql.indexOf("merged := preferred"));
+    expect(mergedRecord).toContain("'parserOutcome', 'accepted:tier3-lgu-suspension:v2'");
+    expect(mergedRecord).toContain("updated_at = pg_catalog.clock_timestamp()");
+  });
+
+  it("preserves the signed v2 boundary and private-function security in the correction", () => {
+    expect(correctionSql).toMatch(/create or replace function classstatus_private\.upsert_collected[\s\S]*?security definer\s+set search_path = ''/i);
+    expect(correctionSql).toContain("p_event_key <> expected_event_key");
+    expect(correctionSql).toContain("p_conflict_key <> expected_family_key");
+    expect(correctionSql).toContain("duplicates-manual:");
+    expect(correctionSql).toContain("suspension.deployment_namespace = p_namespace");
+    expect(correctionSql).toContain("revoke execute on function classstatus_private.upsert_collected(");
+    expect(correctionSql).not.toContain("create or replace function public.");
+    expect(correctionSql).not.toContain("cron.schedule");
+    expect(correctionSql).not.toContain("cron.unschedule");
   });
 });

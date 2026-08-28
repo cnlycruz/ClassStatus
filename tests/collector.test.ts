@@ -175,6 +175,46 @@ describe("Tier 3 collector policy and persistence", () => {
     expect(second.record.additionalSources).toHaveLength(1);
   });
 
+  it("treats an identical compatible corroborator rescan as unchanged despite outlet prose differences", async () => {
+    await upsertCollectedSuspensionRecord(
+      collectedRecord("rappler-walang-pasok", "Rappler Philippines", "a".repeat(64))
+    );
+    const corroborator = collectedRecord("gma-news-walang-pasok", "GMA Network", "b".repeat(64));
+    const merged = await upsertCollectedSuspensionRecord(corroborator);
+    const fileVersion = getAdminStateFileVersion();
+    const repeated = {
+      ...corroborator,
+      reason: "GMA weather desk wording",
+      announcementSummary: "GMA describes the same authoritative suspension with different prose.",
+      collectorProvenance: { ...corroborator.collectorProvenance!, runId: "repeat-corroborator" },
+    };
+
+    const result = await upsertCollectedSuspensionRecord(repeated);
+
+    expect(merged.action).toBe("merged");
+    expect(result.action).toBe("unchanged");
+    expect(result.record.revision).toBe(merged.record.revision);
+    expect(result.record.additionalSources).toHaveLength(1);
+    expect(getAdminStateFileVersion()).toBe(fileVersion);
+  });
+
+  it("preserves the same-primary-source v2 reinterpretation conflict", async () => {
+    const primary = collectedRecord("gma-news-walang-pasok", "GMA Network", "c".repeat(64));
+    const created = await upsertCollectedSuspensionRecord(primary);
+    const fileVersion = getAdminStateFileVersion();
+    const reinterpreted = {
+      ...primary,
+      reason: "Changed interpretation under the same evidence",
+      announcementSummary: "The same primary evidence was parsed into different v2 prose.",
+    };
+
+    const result = await upsertCollectedSuspensionRecord(reinterpreted);
+
+    expect(result).toMatchObject({ action: "held", reason: "collector-policy-version-conflict" });
+    expect(result.record.revision).toBe(created.record.revision);
+    expect(getAdminStateFileVersion()).toBe(fileVersion);
+  });
+
   it("holds contradictory evidence out of live storage", async () => {
     await upsertCollectedSuspensionRecord(collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64)));
     const conflicting = {
@@ -292,7 +332,12 @@ describe("Tier 3 collector policy and persistence", () => {
 
     expect(result).toMatchObject({
       action: "updated",
-      record: { id: exact.id, status: "classes-suspended", affectedLevels: ["all-levels"] },
+      record: {
+        id: exact.id,
+        status: "classes-suspended",
+        affectedLevels: ["all-levels"],
+        parserOutcome: COLLECTOR_PARSER_OUTCOME_V2,
+      },
     });
     expect(localStateStore.readState().records).toHaveLength(1);
   });
@@ -327,7 +372,39 @@ describe("Tier 3 collector policy and persistence", () => {
 
     expect(result.action).toBe("unchanged");
     expect(result.reason).toBeUndefined();
+    expect(result.record.parserOutcome).toBe("accepted:tier3-explicit-lgu-suspension");
     expect(localStateStore.readState().records).toHaveLength(1);
+  });
+
+  it("marks a same-scope v2 update as parser v2 even when legacy semantics remain preferred", async () => {
+    const legacy = storedLegacyRecord("legacy-same-scope-update");
+    installStoredRecords([legacy]);
+    const candidate = collectedRecord("gma-news-walang-pasok", "GMA Network", "d".repeat(64));
+    candidate.source = {
+      ...candidate.source,
+      updatedAt: "2026-08-22T22:00:00+08:00",
+    };
+
+    const result = await upsertCollectedSuspensionRecord(candidate);
+
+    expect(result).toMatchObject({
+      action: "updated",
+      record: { id: legacy.id, parserOutcome: COLLECTOR_PARSER_OUTCOME_V2 },
+    });
+  });
+
+  it("marks a v2 corroboration merge as parser v2 when the preferred record was legacy", async () => {
+    const legacy = storedLegacyRecord("legacy-corroboration-merge");
+    installStoredRecords([legacy]);
+
+    const result = await upsertCollectedSuspensionRecord(
+      collectedRecord("rappler-walang-pasok", "Rappler Philippines", "e".repeat(64))
+    );
+
+    expect(result).toMatchObject({
+      action: "merged",
+      record: { id: legacy.id, parserOutcome: COLLECTOR_PARSER_OUTCOME_V2 },
+    });
   });
 
   it("replaces stale same-outlet evidence instead of exposing it as corroboration", async () => {

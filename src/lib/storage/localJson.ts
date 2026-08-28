@@ -321,6 +321,7 @@ export const localSuspensionStore: SuspensionStore = {
 
       const existingSources = currentSources(existing);
       const sameOrganizationSource = existingSources.find((source) => sameSourceOrganization(source, candidate.source));
+      const candidateIsPrimary = sameSourceOrganization(existing.source, candidate.source);
       const sameEvidence = Boolean(sameOrganizationSource)
         && sourceEvidenceFingerprint(sameOrganizationSource!) === sourceEvidenceFingerprint(candidate.source);
       const sameSemanticState = semanticNoticeFingerprint(existing) === semanticNoticeFingerprint(candidate);
@@ -336,6 +337,14 @@ export const localSuspensionStore: SuspensionStore = {
 
       if (sameOrganizationSource) {
         action = "updated";
+        if (
+          sameEvidence
+          && !candidateIsPrimary
+          && relation === "equal"
+          && existing.status === candidate.status
+        ) {
+          return { changed: false, value: { action: "unchanged", record: existing } };
+        }
         const incomingIsNewer = sourceUpdatedAt(candidate.source) > sourceUpdatedAt(sameOrganizationSource);
         const isTrustedV2Reparse = sameEvidence && storedPolicyVersion < 2;
         if (sameEvidence && !isTrustedV2Reparse) {
@@ -379,6 +388,7 @@ export const localSuspensionStore: SuspensionStore = {
         collectorProvenance: preferred.collectorProvenance,
         publicationProvenance: { type: "automatic-collector", publicLabel: "Published from approved Tier 3 media evidence" },
         administrativeState: "active",
+        parserOutcome: COLLECTOR_PARSER_OUTCOME_V2,
         revision: (existing.revision || 1) + 1,
       };
       state.records[existingIndex] = merged;

@@ -1,5 +1,7 @@
-import { createHash, randomUUID } from "crypto";
+import { randomUUID } from "crypto";
 import { suspensionStore } from "@/lib/storage";
+import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
+import { noticeEventKey } from "@/lib/suspensions/noticeModel";
 import { getSecurityPepper } from "./config";
 import { hmac, safeEqual, sha256, stableJson } from "./crypto";
 import { normalizeManualDraft } from "./validation";
@@ -9,8 +11,11 @@ import type { SuspensionRecord } from "@/types";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function payloadHash(value: unknown): string { return sha256(stableJson(value)); }
-function eventKey(record: Pick<SuspensionRecord, "lguId" | "schoolId" | "effectiveDate" | "status" | "affectedLevels" | "schoolSector" | "isAllDay" | "startTime" | "endTime">): string {
-  return createHash("sha256").update([record.lguId, record.schoolId || "lgu", record.effectiveDate, record.status, [...record.affectedLevels].sort().join(","), record.schoolSector, record.isAllDay ? "all-day" : `${record.startTime}-${record.endTime}`].join("|")).digest("hex");
+function identityNamespace() {
+  if (getStorageDriver() === "local-json") {
+    return process.env.CLASSSTATUS_SUPABASE_NAMESPACE === "production" ? "production" : "preview";
+  }
+  return getDeploymentNamespace();
 }
 export async function createPublicationPreview(input: unknown, sessionId: string) {
   const normalized = normalizeManualDraft(input);
@@ -43,7 +48,7 @@ export async function publishManualSuspension(input: { draft: unknown; confirmat
       publicationProvenance: { type: "manual-admin", publicLabel: "Manually verified by ClassStatus Admin" }, administrativeState: "active", revision: 1,
       manualEvidence: { providerPreset: normalized.evidence.preset, providerName: normalized.resolvedEvidenceProvider, proofUrl: normalized.normalizedProofUrl, ...(normalized.publicNote ? { publicNote: normalized.publicNote } : {}) },
   };
-  record.eventKey = eventKey(record);
+  record.eventKey = noticeEventKey(identityNamespace(), record);
   return suspensionStore.publishManual({
     record,
     confirmationId,

@@ -7,6 +7,10 @@ import {
 } from "@/types";
 import { ALL_LGU_IDS, NCR_LGUS } from "@/data/lgus";
 import { NCR_SCHOOLS } from "@/data/schools";
+import {
+  classifySuspensionScope,
+  COLLECTOR_PARSER_OUTCOME_V2,
+} from "@/lib/suspensions/noticeModel";
 import { getManilaDateString, getManilaTomorrowDateString, getNow } from "@/utils/philippineTime";
 
 export interface ParsedAnnouncement {
@@ -79,7 +83,15 @@ function matchSchool(text: string) {
   });
 }
 
-const NCR_REGION_SCOPE = /\b(?:metro\s+manila|national\s+capital\s+region|ncr)\b/i;
+const EXPLICIT_ALL_NCR_SCOPE = new RegExp(
+  [
+    "\\b(?:all|every)\\s+(?:(?:cities|city|municipalities|municipality|lgus?|schools?)\\s+(?:and\\s+(?:municipalities|schools?)\\s+)?)?(?:in|of|across|throughout)\\s+(?:metro\\s+manila|(?:the\\s+)?national\\s+capital\\s+region|ncr)\\b",
+    "\\b(?:entire|whole)\\s+(?:metro\\s+manila|national\\s+capital\\s+region|ncr)\\b",
+    "\\b(?:region[- ]wide|across|throughout)\\s+(?:class(?:es)?\\s+)?(?:suspension\\s+)?(?:in\\s+)?(?:metro\\s+manila|(?:the\\s+)?national\\s+capital\\s+region|ncr)\\b",
+    "\\bclass(?:es)?\\s+(?:are\\s+|will\\s+be\\s+)?suspended\\s+(?:across|throughout)\\s+(?:metro\\s+manila|(?:the\\s+)?national\\s+capital\\s+region|ncr)\\b",
+  ].join("|"),
+  "i"
+);
 const EXCLUDED_NCR_REGION_SCOPE = /\b(?:outside|except|excluding)\s+(?:metro\s+manila|the\s+national\s+capital\s+region|ncr)\b/i;
 
 function stripDateline(text: string): string {
@@ -88,7 +100,7 @@ function stripDateline(text: string): string {
 
 function matchLgus(text: string): { ids: LGUId[]; isAllNCR: boolean } {
   const scopeText = stripDateline(text);
-  if (NCR_REGION_SCOPE.test(scopeText) && !EXCLUDED_NCR_REGION_SCOPE.test(scopeText)) {
+  if (EXPLICIT_ALL_NCR_SCOPE.test(scopeText) && !EXCLUDED_NCR_REGION_SCOPE.test(scopeText)) {
     return { ids: [...ALL_LGU_IDS], isAllNCR: true };
   }
   const textWithoutMetroManila = scopeText.replace(/metro\s+manila/gi, " ");
@@ -117,8 +129,8 @@ function extractLevels(text: string): EducationLevel[] {
 
 function extractSector(text: string): SchoolSector | null {
   if (/(public\s+and\s+private|both\s+public\s+and\s+private|pampubliko\s+at\s+pribado)/i.test(text)) return "all";
-  if (/(public\s+(?:schools?|institutions?)\s+only|public\s+only|pampubliko\s+lamang|public\s+(?:schools?|institutions?))/i.test(text)) return "public";
-  if (/(private\s+(?:schools?|institutions?)\s+only|private\s+only|pribado\s+lamang|private\s+(?:schools?|institutions?))/i.test(text)) return "private";
+  if (/(public\s+(?:schools?|institutions?)\s+only|public\s+only|pampubliko\s+lamang|public\s+(?:schools?|institutions?)|\(\s*public\s*\))/i.test(text)) return "public";
+  if (/(private\s+(?:schools?|institutions?)\s+only|private\s+only|pribado\s+lamang|private\s+(?:schools?|institutions?)|\(\s*private\s*\))/i.test(text)) return "private";
   return null;
 }
 
@@ -328,6 +340,13 @@ function buildLogicalSegments(rawText: string, articleTitle: string): LogicalAnn
       continue;
     }
 
+    // A regional section is context for its own entries, never evidence that a
+    // similarly named non-NCR target should be converted into an NCR notice.
+    if (section?.kind === "other-region") {
+      pendingTarget = undefined;
+      continue;
+    }
+
     const hasExplicitTarget = Boolean(school) || lguScope.ids.length > 0;
     if (hasExplicitTarget) {
       pendingTarget = undefined;
@@ -339,8 +358,6 @@ function buildLogicalSegments(rawText: string, articleTitle: string): LogicalAnn
         segments.push(logicalSegment([line], section ? [section.line, line] : [line], target));
         continue;
       }
-
-      if (section?.kind === "other-region") continue;
 
       const canUseArticleAction =
         Boolean(articleActionLine) &&
@@ -377,14 +394,12 @@ function buildLogicalSegments(rawText: string, articleTitle: string): LogicalAnn
         continue;
       }
       if (section?.kind === "ncr") {
-        segments.push(
-          logicalSegment([line], [section.line, line], {
-            scopeOverride: { ids: [...ALL_LGU_IDS], isAllNCR: true },
-          })
-        );
+        // A bare NCR heading scopes the list that follows. It does not mean
+        // every NCR LGU; a targetless line therefore fails closed downstream.
+        segments.push(logicalSegment([line], [section.line, line]));
         continue;
       }
-      if (section?.kind === "other-region" || section?.kind === "schools") {
+      if (section?.kind === "schools") {
         pendingTarget = undefined;
         continue;
       }
@@ -457,11 +472,12 @@ export function normalizeAnnouncementSegments(rawText: string, context: Normaliz
     if (!resolvedDate.date) return rejected(evidence, resolvedDate.reason || "invalid-effective-date", { matchedLguIds: lguMatch.ids, isAllNCR: lguMatch.isAllNCR, scopeKind: "lgu" });
 
     const time = extractTimeWindow(text);
-    const modalityOnly = /face-to-face/i.test(text) && SUSPENSION_ACTION.test(text);
-    const status: SuspensionStatus =
-      modalityOnly || !time.isAllDay || !levels.includes("all-levels")
-        ? "partial-suspension"
-        : "classes-suspended";
+    const status: SuspensionStatus = classifySuspensionScope({
+      targetType: "lgu",
+      affectedLevels: levels,
+      schoolSector: sector,
+      isAllDay: time.isAllDay,
+    });
     const reason = reasonFrom(`${context.articleTitle} ${text}`);
     const location = lguMatch.isAllNCR
       ? "all 17 NCR LGUs"
@@ -482,7 +498,7 @@ export function normalizeAnnouncementSegments(rawText: string, context: Normaliz
       confidence: "medium",
       isExplicitNoSuspension: false,
       evidenceExcerpt: evidence,
-      parserOutcome: "accepted:tier3-explicit-lgu-suspension",
+      parserOutcome: COLLECTOR_PARSER_OUTCOME_V2,
       publishable: true,
     };
   });

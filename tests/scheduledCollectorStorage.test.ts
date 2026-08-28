@@ -35,10 +35,14 @@ vi.mock("@/lib/supabase/server", () => ({
 
 import { supabaseSuspensionStore } from "@/lib/storage/supabase";
 
+const eventKey = `v2e:${"a".repeat(64)}`;
+const conflictKey = `v2f:${"b".repeat(64)}`;
 const candidate = {
   id: "record-1",
   lguId: "manila",
   status: "suspended",
+  eventKey,
+  parserOutcome: "accepted:tier3-lgu-suspension:v2",
 };
 
 describe("scheduled collector storage path", () => {
@@ -63,14 +67,14 @@ describe("scheduled collector storage path", () => {
 
     await expect(supabaseSuspensionStore.upsertCollected({
       candidate,
-      eventKey: "a".repeat(64),
-      conflictKey: "conflict",
+      eventKey,
+      conflictKey,
     } as never)).resolves.toMatchObject({ action: "created", record: candidate });
 
     expect(mocks.publicRpc).toHaveBeenCalledWith(
       "classstatus_production_worker_upsert_collected",
       expect.objectContaining({
-        p_payload: JSON.stringify({ record: candidate, eventKey: "a".repeat(64), conflictKey: "conflict" }),
+        p_payload: JSON.stringify({ record: candidate, eventKey, conflictKey }),
         p_issued_at: expect.any(Number),
         p_nonce: expect.stringMatching(/^[0-9a-f-]{36}$/),
         p_signature: expect.stringMatching(/^[0-9a-f]{64}$/),
@@ -91,8 +95,8 @@ describe("scheduled collector storage path", () => {
     mocks.userRpc.mockResolvedValueOnce({ data: { action: "created", record: candidate }, error: null });
     await supabaseSuspensionStore.upsertCollected({
       candidate,
-      eventKey: "b".repeat(64),
-      conflictKey: "manual-conflict",
+      eventKey,
+      conflictKey,
     } as never);
     expect(mocks.userRpc).toHaveBeenCalledWith(
       "classstatus_production_upsert_collected",

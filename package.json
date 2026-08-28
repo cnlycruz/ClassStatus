@@ -13,8 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "collect": "tsx src/collector/cli.ts",
-    "admin:hash-password": "node scripts/hash-admin-password.mjs",
-    "data:import-suspensions": "node scripts/import-suspensions-to-supabase.mjs"
+    "admin:hash-password": "node scripts/hash-admin-password.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.4",

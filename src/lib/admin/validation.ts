@@ -3,6 +3,7 @@ import { ALL_LGU_IDS, NCR_LGUS } from "@/data/lgus";
 import { NCR_SCHOOLS } from "@/data/schools";
 import { getManilaDateString, getManilaTomorrowDateString } from "@/utils/philippineTime";
 import type { EducationLevel, SchoolSector } from "@/types";
+import { classifySuspensionScope } from "@/lib/suspensions/noticeModel";
 import type { ManualSuspensionDraft, NormalizedManualDraft, PresetValue } from "./types";
 import { DURATION_PRESETS, EVIDENCE_PRESETS, REASON_PRESETS } from "./types";
 
@@ -81,7 +82,12 @@ export function normalizeManualDraft(input: unknown, now = new Date()): Normaliz
   if (needsTime && (!draft.duration.startTime || !draft.duration.endTime || draft.duration.startTime >= draft.duration.endTime)) throw new Error("duration-time-invalid");
   if (!needsTime && (draft.duration.startTime || draft.duration.endTime)) throw new Error("duration-time-unexpected");
   const isAllDay = draft.duration.preset === "whole-day" || draft.duration.preset === "until-further-notice" || (draft.duration.preset === "other" && draft.duration.isAllDay === true);
-  const fullScope = levels.includes("all-levels") && (draft.targetType === "school" || sector === "all") && isAllDay;
+  const status = classifySuspensionScope({
+    targetType: draft.targetType,
+    affectedLevels: levels,
+    schoolSector: sector,
+    isAllDay,
+  });
 
   return {
     ...draft, sector, affectedLevels: levels, lguId, schoolId, targetName,
@@ -89,6 +95,6 @@ export function normalizeManualDraft(input: unknown, now = new Date()): Normaliz
     duration: { preset: draft.duration.preset, ...(draft.duration.preset === "other" ? { customValue: resolvedDuration } : {}), isAllDay, ...(needsTime ? { startTime: draft.duration.startTime, endTime: draft.duration.endTime } : {}) },
     evidence: { preset: draft.evidence.preset, ...(draft.evidence.preset === "other" ? { customValue: resolvedEvidenceProvider } : {}) },
     publicNote: cleanText(draft.publicNote, 500, "public-note"), resolvedReason, resolvedDuration,
-    resolvedEvidenceProvider, normalizedProofUrl: normalizeProofUrl(draft.proofUrl), status: fullScope ? "classes-suspended" : "partial-suspension",
+    resolvedEvidenceProvider, normalizedProofUrl: normalizeProofUrl(draft.proofUrl), status,
   };
 }

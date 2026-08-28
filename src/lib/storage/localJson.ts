@@ -10,6 +10,20 @@ import { isLivePublicationRecord, isLiveTier3Record } from "@/collector/sourcePo
 import { projectPublicStorageRecord } from "@/lib/admin/publicProjection";
 import type { CollectedUpsertResult, SuspensionStore } from "./contracts";
 import { assertLocalJsonAvailable } from "./driver";
+import {
+  COLLECTOR_PARSER_OUTCOME_V2,
+  compareNoticeScope,
+  currentSources,
+  hasCanonicalV2Keys,
+  noticeEventKey,
+  noticeFamilyKey,
+  noticeWindowsOverlap,
+  replaceCurrentOrganizationSource,
+  sameSourceOrganization,
+  semanticNoticeFingerprint,
+  sourceEvidenceFingerprint,
+  sourceUpdatedAt,
+} from "@/lib/suspensions/noticeModel";
 
 const STATE_SCHEMA_VERSION = 2;
 
@@ -104,6 +118,15 @@ export const localStateStore = {
       return result;
     });
   },
+  mutateStateIfChanged<T>(mutation: (state: AdminStateDocument) => { changed: boolean; value: T }): T {
+    assertLocalJsonAvailable();
+    return withFileLock(stateFile(), [], () => {
+      const state = readStateDocument();
+      const result = mutation(state);
+      if (result.changed) atomicWrite(stateFile(), state);
+      return result.value;
+    });
+  },
 };
 
 export const localSecurityStore: AdminSecurityStore = {
@@ -137,27 +160,6 @@ function appendStateAudit(state: AdminStateDocument, entry: Omit<AuditEntry, "id
 function pruneReceipts(state: AdminStateDocument, now = Date.now()): void {
   state.confirmations = state.confirmations.filter((item) => !item.consumedAt && Date.parse(item.expiresAt) > now);
   state.idempotency = state.idempotency.filter((item) => now - Date.parse(item.createdAt) < RECEIPT_MS);
-}
-
-function conflictKey(record: SuspensionRecord): string {
-  return [
-    record.lguId,
-    record.schoolId || "lgu",
-    record.effectiveDate,
-    [...record.affectedLevels].sort().join(","),
-    record.schoolSector,
-    record.isAllDay ? "all-day" : `${record.startTime || ""}-${record.endTime || ""}`,
-  ].join("|");
-}
-
-function uniqueSources(sources: SourceCitation[]): SourceCitation[] {
-  const seen = new Set<string>();
-  return sources.filter((source) => {
-    const identity = `${source.organization.trim().toLowerCase()}|${source.url}`;
-    if (seen.has(identity)) return false;
-    seen.add(identity);
-    return true;
-  });
 }
 
 function withVerification(sources: SourceCitation[], confidence: "medium" | "high"): SourceCitation[] {
@@ -198,7 +200,12 @@ export const localSuspensionStore: SuspensionStore = {
       }
       const confirmation = state.confirmations.find((item) => item.id === input.confirmationId && item.sessionId === input.sessionId && item.payloadHash === input.confirmationPayloadHash);
       if (!confirmation || confirmation.consumedAt || Date.parse(confirmation.expiresAt) <= Date.now()) throw new Error("confirmation-invalid");
-      const duplicate = state.records.find((item) => effectiveAdminState(item) !== "removed" && item.eventKey === input.record.eventKey);
+      const namespace = process.env.CLASSSTATUS_SUPABASE_NAMESPACE === "production" ? "production" : "preview";
+      const expectedEventKey = noticeEventKey(namespace, input.record);
+      const duplicate = state.records.find((item) =>
+        effectiveAdminState(item) !== "removed"
+        && noticeEventKey(namespace, item) === expectedEventKey
+      );
       if (duplicate) throw new Error("duplicate-publication");
       const now = new Date().toISOString();
       confirmation.consumedAt = now;
@@ -259,30 +266,123 @@ export const localSuspensionStore: SuspensionStore = {
     return { entries: all.slice(offset, offset + Math.max(1, Math.min(limit, 200))), total: all.length };
   },
   async upsertCollected(input): Promise<CollectedUpsertResult> {
-    return localStateStore.mutateState((state) => {
+    return localStateStore.mutateStateIfChanged<CollectedUpsertResult>((state) => {
       const candidate = input.candidate;
-      const activeRecords = state.records.filter((record) => effectiveAdminState(record) === "active");
-      const duplicateManual = activeRecords.find((record) => record.publicationProvenance?.type === "manual-admin" && record.eventKey === input.eventKey);
-      if (duplicateManual) return { action: "held", record: candidate, reason: `duplicates-manual:${duplicateManual.id}` };
-      const conflict = activeRecords.find((record) => conflictKey(record) === input.conflictKey && record.status !== candidate.status);
-      if (conflict) return { action: "held", record: candidate, reason: `conflicts-with:${conflict.id}` };
-      const existingIndex = state.records.findIndex((record) => isLiveTier3Record(record) && record.eventKey === input.eventKey);
-      if (existingIndex < 0) {
-        candidate.source = { ...candidate.source, verified: false };
-        state.records.unshift(candidate);
-        return { action: "created", record: candidate };
+      const namespace = process.env.CLASSSTATUS_SUPABASE_NAMESPACE === "production" ? "production" : "preview";
+      const expectedEventKey = noticeEventKey(namespace, candidate);
+      const expectedFamilyKey = noticeFamilyKey(namespace, candidate);
+      if (
+        candidate.parserOutcome !== COLLECTOR_PARSER_OUTCOME_V2
+        || !hasCanonicalV2Keys(input.eventKey, input.conflictKey)
+        || input.eventKey !== expectedEventKey
+        || candidate.eventKey !== expectedEventKey
+        || input.conflictKey !== expectedFamilyKey
+      ) {
+        throw new Error("collector-policy-key-rejected");
       }
+
+      const familyRecords = state.records.filter((record) =>
+        noticeFamilyKey(namespace, record) === expectedFamilyKey
+      );
+      const duplicateManual = familyRecords.find((record) =>
+        record.publicationProvenance?.type === "manual-admin"
+        && effectiveAdminState(record) !== "removed"
+        && noticeWindowsOverlap(record, candidate)
+      );
+      if (duplicateManual) {
+        return { changed: false, value: { action: "held", record: candidate, reason: `duplicates-manual:${duplicateManual.id}` } };
+      }
+
+      const collectedMatches = familyRecords
+        .map((record) => ({ record, index: state.records.indexOf(record) }))
+        .filter(({ record }) => isLiveTier3Record(record) && effectiveAdminState(record) !== "removed");
+      const plausibleById = new Map(collectedMatches
+        .filter(({ record }) =>
+          noticeEventKey(namespace, record) === expectedEventKey
+          || noticeWindowsOverlap(record, candidate)
+        )
+        .map((match) => [match.record.id, match]));
+      const plausibleMatches = [...plausibleById.values()];
+
+      if (plausibleMatches.length > 1) {
+        return { changed: false, value: { action: "held", record: candidate, reason: "legacy-duplicates-require-cleanup" } };
+      }
+      if (plausibleMatches.length === 0) {
+        const created = { ...candidate, source: { ...candidate.source, verified: false }, additionalSources: [] };
+        state.records.unshift(created);
+        return { changed: true, value: { action: "created", record: created } };
+      }
+
+      const existingIndex = plausibleMatches[0].index;
       const existing = state.records[existingIndex];
-      if (effectiveAdminState(existing) !== "active") return { action: "held", record: candidate, reason: `administratively-removed:${existing.id}` };
-      const isNewer = new Date(candidate.publishedAt).getTime() > new Date(existing.publishedAt).getTime();
-      const preferred = isNewer ? candidate : existing;
-      const sources = uniqueSources([preferred.source, existing.source, ...(existing.additionalSources || []), candidate.source]);
-      const confidence: "medium" | "high" = new Set(sources.map((source) => source.organization.trim().toLowerCase())).size >= 2 ? "high" : "medium";
-      const verifiedSources = withVerification(sources, confidence);
-      const merged: SuspensionRecord = { ...preferred, id: existing.id, eventKey: input.eventKey, source: verifiedSources[0], additionalSources: verifiedSources.slice(1), confidence, collectorProvenance: preferred.collectorProvenance, publicationProvenance: { type: "automatic-collector", publicLabel: "Published from approved Tier 3 media evidence" }, administrativeState: "active", revision: (existing.revision || 1) + 1 };
+      if (effectiveAdminState(existing) !== "active") {
+        return { changed: false, value: { action: "held", record: candidate, reason: `administratively-removed:${existing.id}` } };
+      }
+
+      const existingSources = currentSources(existing);
+      const sameOrganizationSource = existingSources.find((source) => sameSourceOrganization(source, candidate.source));
+      const sameEvidence = Boolean(sameOrganizationSource)
+        && sourceEvidenceFingerprint(sameOrganizationSource!) === sourceEvidenceFingerprint(candidate.source);
+      const sameSemanticState = semanticNoticeFingerprint(existing) === semanticNoticeFingerprint(candidate);
+      if (sameEvidence && sameSemanticState) {
+        return { changed: false, value: { action: "unchanged", record: existing } };
+      }
+
+      const relation = compareNoticeScope(existing, candidate);
+      const storedPolicyVersion = existing.parserOutcome === COLLECTOR_PARSER_OUTCOME_V2 ? 2 : 1;
+      let useCandidateState = false;
+      let action: "updated" | "merged";
+      let sources: SourceCitation[];
+
+      if (sameOrganizationSource) {
+        action = "updated";
+        const incomingIsNewer = sourceUpdatedAt(candidate.source) > sourceUpdatedAt(sameOrganizationSource);
+        const isTrustedV2Reparse = sameEvidence && storedPolicyVersion < 2;
+        if (sameEvidence && !isTrustedV2Reparse) {
+          return { changed: false, value: { action: "held", record: candidate, reason: "collector-policy-version-conflict" } };
+        }
+        if (!sameEvidence && !incomingIsNewer && relation !== "expands") {
+          return { changed: false, value: { action: "unchanged", record: existing } };
+        }
+        useCandidateState = !sameSemanticState;
+        sources = replaceCurrentOrganizationSource(existingSources, candidate.source);
+      } else {
+        action = "merged";
+        if (!sameSemanticState && relation !== "equal" && relation !== "expands") {
+          return { changed: false, value: { action: "held", record: candidate, reason: "cross-source-scope-conflict" } };
+        }
+        if (existing.status !== candidate.status) {
+          if (storedPolicyVersion < 2 && (relation === "equal" || relation === "expands")) {
+            useCandidateState = true;
+          } else {
+            return { changed: false, value: { action: "held", record: candidate, reason: "cross-source-status-conflict" } };
+          }
+        } else {
+          useCandidateState = relation === "expands";
+        }
+        sources = useCandidateState
+          ? [candidate.source, ...existingSources]
+          : [...existingSources, candidate.source];
+      }
+
+      const preferred = useCandidateState ? candidate : existing;
+      const boundedSources = sources.slice(0, 4);
+      const confidence: "medium" | "high" = boundedSources.length >= 2 ? "high" : "medium";
+      const verifiedSources = withVerification(boundedSources, confidence);
+      const merged: SuspensionRecord = {
+        ...preferred,
+        id: existing.id,
+        eventKey: noticeEventKey(namespace, preferred),
+        source: verifiedSources[0],
+        additionalSources: verifiedSources.slice(1),
+        confidence,
+        collectorProvenance: preferred.collectorProvenance,
+        publicationProvenance: { type: "automatic-collector", publicLabel: "Published from approved Tier 3 media evidence" },
+        administrativeState: "active",
+        revision: (existing.revision || 1) + 1,
+      };
       state.records[existingIndex] = merged;
-      const sameOutlet = [existing.source, ...(existing.additionalSources || [])].some((source) => source.organization === candidate.source.organization && source.url === candidate.source.url);
-      return { action: sameOutlet ? "updated" : "merged", record: merged };
+      return { changed: true, value: { action, record: merged } };
     });
   },
   async clearCollected() {

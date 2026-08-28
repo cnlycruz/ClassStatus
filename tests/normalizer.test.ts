@@ -3,6 +3,8 @@ import path from "path";
 import { describe, expect, it } from "vitest";
 import { normalizeAnnouncementSegments } from "../src/collector/normalizer";
 import { ALL_LGU_IDS } from "../src/data/lgus";
+import { deriveLGUStatus } from "../src/collector/lifecycle";
+import type { SuspensionRecord } from "../src/types";
 
 const now = new Date("2026-08-23T08:00:00+08:00");
 const context = {
@@ -107,7 +109,7 @@ describe("Tier 3 statement normalizer", () => {
     expect(lguResults).toHaveLength(2);
     expect(lguResults.map((result) => result.matchedLguIds)).toEqual([["caloocan"], ["san-juan"]]);
     expect(lguResults.every((result) => result.publishable && result.effectiveDate === "2026-08-23")).toBe(true);
-    expect(lguResults.every((result) => result.status === "partial-suspension")).toBe(true);
+    expect(lguResults.every((result) => result.status === "classes-suspended")).toBe(true);
     expect(schoolResult).toMatchObject({
       scopeKind: "school",
       schoolId: "ue-caloocan",
@@ -130,16 +132,17 @@ describe("Tier 3 statement normalizer", () => {
     expect(lguResults.flatMap((result) => result.matchedLguIds)).toEqual(["caloocan", "san-juan"]);
   });
 
-  it("maps Metro Manila to all NCR while excluding the Manila dateline and preserving explicit Manila City", () => {
+  it("requires explicit universal language for all-NCR expansion and ignores a Manila dateline", () => {
     const results = normalizeAnnouncementSegments(
       fixture("rappler-metro-manila-article.txt"),
       context
     );
 
     expect(results[0]).toMatchObject({
-      isAllNCR: true,
-      matchedLguIds: ALL_LGU_IDS,
-      publishable: true,
+      isAllNCR: false,
+      matchedLguIds: [],
+      publishable: false,
+      rejectionReason: "missing-ncr-lgu",
     });
     expect(results[1]).toMatchObject({
       isAllNCR: false,
@@ -147,6 +150,16 @@ describe("Tier 3 statement normalizer", () => {
       publishable: true,
     });
     expect(results).toHaveLength(2);
+
+    const explicitRegionWide = normalizeAnnouncementSegments(
+      "Classes are suspended throughout Metro Manila in all levels for public and private schools on August 23, 2026.",
+      context
+    )[0];
+    expect(explicitRegionWide).toMatchObject({
+      isAllNCR: true,
+      matchedLguIds: ALL_LGU_IDS,
+      publishable: true,
+    });
 
     const datelineOnly = normalizeAnnouncementSegments(
       "MANILA, Philippines – Classes are suspended in all levels for public and private schools on August 23, 2026.",
@@ -174,7 +187,7 @@ describe("Tier 3 statement normalizer", () => {
     expect(lguResults.every((result) => !result.publishable)).toBe(true);
 
     const staleMetroManila = normalizeAnnouncementSegments(
-      "MANILA, Philippines – Classes are suspended in all levels for public and private schools in Metro Manila on August 20, 2026.",
+      "MANILA, Philippines – Classes are suspended throughout Metro Manila in all levels for public and private schools on August 20, 2026.",
       { ...context, articleTitle: "Class suspensions for August 20, 2026" }
     )[0];
     expect(staleMetroManila).toMatchObject({
@@ -182,5 +195,93 @@ describe("Tier 3 statement normalizer", () => {
       matchedLguIds: ALL_LGU_IDS,
       rejectionReason: "effective-date-outside-live-window",
     });
+  });
+
+  it("treats an NCR heading as section context and rejects non-NCR targets", () => {
+    const agoo = normalizeAnnouncementSegments(
+      "Metro Manila\nAgoo - Kindergarten to High School no face-to-face classes public and private",
+      context
+    );
+    const malolos = normalizeAnnouncementSegments(
+      "Metro Manila\nMalolos - no face-to-face classes all levels public and private",
+      context
+    );
+    expect(agoo.filter((result) => result.publishable)).toHaveLength(0);
+    expect(malolos.filter((result) => result.publishable)).toHaveLength(0);
+  });
+
+  it("publishes only exact NCR entries and ends context at a later region heading", () => {
+    const results = normalizeAnnouncementSegments(
+      [
+        "Metro Manila",
+        "Caloocan City - face-to-face classes in all levels (public and private)",
+        "Las Piñas City - all levels (public and private)",
+        "Central Luzon",
+        "Malolos - no face-to-face classes all levels public and private",
+      ].join("\n"),
+      context
+    ).filter((result) => result.publishable);
+    expect(results.flatMap((result) => result.matchedLguIds)).toEqual(["caloocan", "las-pinas"]);
+    expect(results.every((result) => !result.isAllNCR)).toBe(true);
+  });
+
+  it("classifies face-to-face notices from their actual level, sector, and time scope", () => {
+    const results = normalizeAnnouncementSegments(
+      [
+        "City of Manila – face-to-face classes in all levels (public and private)",
+        "Caloocan City – face-to-face classes in all levels (public and private)",
+        "Makati City – face-to-face classes in all levels (public)",
+        "Pasig City – face-to-face classes from preschool to senior high school (public and private)",
+        "Pateros – face-to-face classes from preschool to senior high school (public and private)",
+      ].join("\n"),
+      context
+    );
+    expect(results.slice(0, 2).every((result) => result.status === "classes-suspended")).toBe(true);
+    expect(results[0]).toMatchObject({ affectedLevels: ["all-levels"], schoolSector: "all" });
+    expect(results[2]).toMatchObject({ status: "partial-suspension", affectedLevels: ["all-levels"], schoolSector: "public" });
+    for (const result of results.slice(3)) {
+      expect(result).toMatchObject({ status: "partial-suspension", schoolSector: "all" });
+      expect(result.affectedLevels).toHaveLength(4);
+      expect(result.affectedLevels).toEqual(expect.arrayContaining(["preschool", "elementary", "junior-high", "senior-high"]));
+    }
+  });
+
+  it("produces the expected 14 full and 3 partial NCR statuses from a synthetic fixture", () => {
+    const results = normalizeAnnouncementSegments(
+      fixture("synthetic-ncr-scope-2026-08-28.txt"),
+      {
+        articleTitle: "Synthetic class suspensions for August 28, 2026",
+        publishedAt: "2026-08-27T21:00:00+08:00",
+        now: new Date("2026-08-28T08:00:00+08:00"),
+      }
+    ).filter((result) => result.publishable);
+    const byLgu = new Map(results.flatMap((result) => result.matchedLguIds.map((lguId) => [lguId, result.status])));
+    expect(byLgu.size).toBe(17);
+    expect([...byLgu.values()].filter((status) => status === "classes-suspended")).toHaveLength(14);
+    expect([...byLgu.entries()].filter(([, status]) => status === "partial-suspension").map(([id]) => id).sort()).toEqual(["makati", "pasig", "pateros"]);
+
+    const records = results.flatMap((result, index) => result.matchedLguIds.map((lguId) => ({
+      id: `synthetic-${index}-${lguId}`,
+      lguId,
+      status: result.status,
+      affectedLevels: result.affectedLevels,
+      schoolSector: result.schoolSector,
+      effectiveDate: result.effectiveDate,
+      isAllDay: result.isAllDay,
+      reason: result.reason,
+      announcementSummary: result.summary,
+      source: { id: "synthetic", name: "Synthetic", organization: "Synthetic", url: "https://example.test/synthetic", type: "news-reputable" as const, reliabilityTier: 3 as const, verified: false, publishedAt: "2026-08-27T21:00:00+08:00" },
+      confidence: "medium" as const,
+      discoveredAt: "2026-08-27T21:05:00+08:00",
+      publishedAt: "2026-08-27T21:00:00+08:00",
+      lifecycleState: "upcoming" as const,
+      isActive: false,
+      isUpcoming: true,
+      isExpired: false,
+    } satisfies SuspensionRecord)));
+    const mapStatuses = ALL_LGU_IDS.map((lguId) => deriveLGUStatus(lguId, records, "2026-08-28").status);
+    expect(mapStatuses.filter((status) => status === "classes-suspended")).toHaveLength(14);
+    expect(mapStatuses.filter((status) => status === "partial-suspension")).toHaveLength(3);
+    expect(mapStatuses.filter((status) => status === "awaiting-information")).toHaveLength(0);
   });
 });

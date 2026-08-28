@@ -133,7 +133,7 @@ export const supabaseSuspensionStore: SuspensionStore = {
     return value as { entries: AuditEntry[]; total: number };
   },
   async upsertCollected(input) {
-    const value = z.object({ action: z.enum(["created", "updated", "merged", "held"]), record: recordSchema, reason: z.string().optional() }).parse(await collectorRpc("upsert_collected", {
+    const value = z.object({ action: z.enum(["created", "updated", "merged", "unchanged", "held"]), record: recordSchema, reason: z.string().optional() }).parse(await collectorRpc("upsert_collected", {
       p_record: input.candidate,
       p_event_key: input.eventKey,
       p_conflict_key: input.conflictKey,

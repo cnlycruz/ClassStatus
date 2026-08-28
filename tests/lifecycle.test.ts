@@ -129,6 +129,21 @@ describe("Suspension Lifecycle & Timezone Engine", () => {
     expect(derived.activeRecords).toHaveLength(1);
   });
 
+  it("keeps a full-target school notice full without promoting the LGU map", () => {
+    const schoolSpecific = projectedAutomaticRecord({
+      id: "school-full",
+      schoolId: "ust-manila",
+      status: "classes-suspended",
+      affectedLevels: ["all-levels"],
+      schoolSector: "private",
+      isAllDay: true,
+    });
+    const derived = deriveLGUStatus("manila", [schoolSpecific], "2026-08-19");
+    expect(schoolSpecific.status).toBe("classes-suspended");
+    expect(derived.status).toBe("awaiting-information");
+    expect(derived.activeRecords).toHaveLength(0);
+  });
+
   it("derives LGU status with upcoming suspension notice flag", () => {
     const tomorrowRecord = projectedAutomaticRecord({
       lguId: "marikina",

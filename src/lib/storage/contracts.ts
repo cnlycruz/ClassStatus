@@ -34,7 +34,7 @@ export interface CollectorUpsertMutation {
 }
 
 export interface CollectedUpsertResult {
-  action: "created" | "updated" | "merged" | "held";
+  action: "created" | "updated" | "merged" | "unchanged" | "held";
   record: SuspensionRecord;
   reason?: string;
 }

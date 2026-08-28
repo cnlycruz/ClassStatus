@@ -217,6 +217,13 @@ export class CollectorEngine {
                 });
                 continue;
               }
+              if (result.action === "unchanged") {
+                addLog("info", source.id, source.name, `Unchanged Tier 3 record for ${lguId.toUpperCase()} (${finalRecord.effectiveDate}); no write performed.`, {
+                  recordId: result.record.id,
+                  articleUrl: item.canonicalUrl,
+                });
+                continue;
+              }
               announcementsPublished++;
               addLog("success", source.id, source.name, `${result.action} Tier 3 record for ${lguId.toUpperCase()} (${finalRecord.effectiveDate}).`, {
                 recordId: result.record.id,

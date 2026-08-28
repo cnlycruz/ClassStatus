@@ -9,13 +9,20 @@ const executionMocks = vi.hoisted(() => ({
 
 vi.mock("@/collector/execution", () => executionMocks);
 
-import { POST } from "@/app/api/cron/collector/route";
+import { GET, POST } from "@/app/api/cron/collector/route";
 
 const secret = "test-preview-cron-secret-" + "x".repeat(32);
 
 function request(authorization?: string) {
   return new NextRequest("http://localhost:3000/api/cron/collector", {
     method: "POST",
+    headers: authorization ? { authorization } : undefined,
+  });
+}
+
+function probeRequest(authorization?: string) {
+  return new NextRequest("http://localhost:3000/api/cron/collector", {
+    method: "GET",
     headers: authorization ? { authorization } : undefined,
   });
 }
@@ -93,5 +100,17 @@ describe("scheduled collector endpoint", () => {
       "utf8"
     );
     expect(route).not.toMatch(/searchParams|cookies\(|request\.json\(|x-classstatus-namespace/i);
+  });
+
+  it("exposes only an authenticated, no-write collector policy probe", async () => {
+    const unauthorized = await GET(probeRequest());
+    expect(unauthorized.status).toBe(401);
+    expect(unauthorized.headers.get("cache-control")).toBe("no-store, private");
+
+    const response = await GET(probeRequest(`Bearer ${secret}`));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
+    expect(await response.json()).toEqual({ compatible: true, collectorPolicyVersion: 2 });
+    expect(executionMocks.runScheduledCollectorWithLease).not.toHaveBeenCalled();
   });
 });

@@ -30,6 +30,8 @@ describe("admin validation and authentication primitives", () => {
   it("locks school sector and offered levels to the registry", () => {
     const result = normalizeManualDraft({ ...baseDraft(), targetType: "school", targetId: "ust-manila", sector: "public", affectedLevels: ["college"] });
     expect(result.schoolId).toBe("ust-manila"); expect(result.sector).toBe("private"); expect(result.status).toBe("partial-suspension");
+    const fullSchool = normalizeManualDraft({ ...baseDraft(), targetType: "school", targetId: "ust-manila", sector: "public", affectedLevels: ["all-levels"] });
+    expect(fullSchool.sector).toBe("private"); expect(fullSchool.status).toBe("classes-suspended");
     expect(() => normalizeManualDraft({ ...baseDraft(), targetType: "school", targetId: "ust-manila", affectedLevels: ["preschool"] })).toThrow("school-level-mismatch");
   });
   it("enforces today/tomorrow, exact partial times, and safe proof URLs", () => {

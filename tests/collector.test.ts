@@ -9,6 +9,8 @@ import {
 import { CollectorSourceConfig, SuspensionRecord } from "../src/types";
 import { RawAnnouncementItem, SourceCollectorAdapter, SourceDiscoveryResult } from "../src/collector/sources/types";
 import { GET as getLgus } from "../src/app/api/lgus/route";
+import { COLLECTOR_PARSER_OUTCOME_V2 } from "../src/lib/suspensions/noticeModel";
+import { getAdminStateFileVersion, localStateStore } from "../src/lib/storage/localJson";
 
 const tier3Source = (id = "gma-news-walang-pasok", organization = "GMA Network"): CollectorSourceConfig => ({
   id,
@@ -81,7 +83,33 @@ function collectedRecord(sourceId: string, organization: string, fingerprint: st
       runId: "test-run",
       collectedAt: "2026-08-22T21:05:00+08:00",
     },
+    parserOutcome: COLLECTOR_PARSER_OUTCOME_V2,
   };
+}
+
+function storedLegacyRecord(
+  id: string,
+  overrides: Partial<SuspensionRecord> = {}
+): SuspensionRecord {
+  return {
+    ...collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64)),
+    id,
+    eventKey: id.padEnd(64, "0").slice(0, 64).replace(/[^0-9a-f]/g, "a"),
+    parserOutcome: "accepted:tier3-explicit-lgu-suspension",
+    publicationProvenance: {
+      type: "automatic-collector",
+      publicLabel: "Published from approved Tier 3 media evidence",
+    },
+    administrativeState: "active",
+    revision: 1,
+    ...overrides,
+  };
+}
+
+function installStoredRecords(records: SuspensionRecord[]): void {
+  localStateStore.mutateState((state) => {
+    state.records = records;
+  });
 }
 
 describe("Tier 3 collector policy and persistence", () => {
@@ -152,10 +180,193 @@ describe("Tier 3 collector policy and persistence", () => {
     const conflicting = {
       ...collectedRecord("rappler-walang-pasok", "Rappler Philippines", "b".repeat(64)),
       status: "partial-suspension" as const,
+      affectedLevels: ["elementary" as const],
+      schoolSector: "public" as const,
     };
     const result = await upsertCollectedSuspensionRecord(conflicting);
     expect(result.action).toBe("held");
     expect(await getSuspensions()).toHaveLength(1);
+  });
+
+  it("makes exact rescans true no-ops without revision or file timestamp churn", async () => {
+    const record = collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64));
+    const first = await upsertCollectedSuspensionRecord(record);
+    const fileVersion = getAdminStateFileVersion();
+    const second = await upsertCollectedSuspensionRecord({ ...record, collectorProvenance: { ...record.collectorProvenance!, runId: "later-run" } });
+    expect(first.action).toBe("created");
+    expect(second.action).toBe("unchanged");
+    expect(second.record.revision).toBe(first.record.revision);
+    expect(getAdminStateFileVersion()).toBe(fileVersion);
+    expect(await getSuspensions()).toHaveLength(1);
+  });
+
+  it("refines one logical notice when the same outlet expands its scope", async () => {
+    const firstRecord = {
+      ...collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64)),
+      lguId: "quezon-city" as const,
+      status: "partial-suspension" as const,
+      affectedLevels: ["preschool", "elementary", "junior-high", "senior-high"] as SuspensionRecord["affectedLevels"],
+    };
+    const first = await upsertCollectedSuspensionRecord(firstRecord);
+    const refined = {
+      ...collectedRecord("gma-news-walang-pasok", "GMA Network", "b".repeat(64)),
+      lguId: "quezon-city" as const,
+      source: {
+        ...collectedRecord("gma-news-walang-pasok", "GMA Network", "b".repeat(64)).source,
+        updatedAt: "2026-08-22T22:00:00+08:00",
+      },
+    };
+    const second = await upsertCollectedSuspensionRecord(refined);
+    expect(first.action).toBe("created");
+    expect(second.action).toBe("updated");
+    expect(second.record.id).toBe(first.record.id);
+    expect(second.record).toMatchObject({ status: "classes-suspended", affectedLevels: ["all-levels"] });
+    expect((await getSuspensions()).filter((record) => record.lguId === "quezon-city")).toHaveLength(1);
+  });
+
+  it("holds without mutation when one exact and one overlapping legacy candidate are plausible", async () => {
+    const candidate = collectedRecord("gma-news-walang-pasok", "GMA Network", "b".repeat(64));
+    const exact = storedLegacyRecord("exact-legacy", {
+      status: "partial-suspension",
+      affectedLevels: ["preschool"],
+    });
+    const overlap = storedLegacyRecord("overlap-legacy", {
+      isAllDay: false,
+      startTime: "06:00",
+      endTime: "11:00",
+      status: "partial-suspension",
+      affectedLevels: ["preschool"],
+    });
+    installStoredRecords([exact, overlap]);
+    const before = localStateStore.readState().records;
+    const fileVersion = getAdminStateFileVersion();
+
+    const result = await upsertCollectedSuspensionRecord(candidate);
+
+    expect(result).toMatchObject({ action: "held", reason: "legacy-duplicates-require-cleanup" });
+    expect(localStateStore.readState().records).toEqual(before);
+    expect(getAdminStateFileVersion()).toBe(fileVersion);
+  });
+
+  it("holds without mutation when two overlapping legacy candidates and no exact match are plausible", async () => {
+    const candidate = {
+      ...collectedRecord("gma-news-walang-pasok", "GMA Network", "c".repeat(64)),
+      isAllDay: false,
+      startTime: "08:00",
+      endTime: "17:00",
+      status: "partial-suspension" as const,
+    };
+    const early = storedLegacyRecord("early-legacy", {
+      isAllDay: false,
+      startTime: "06:00",
+      endTime: "10:00",
+      status: "partial-suspension",
+    });
+    const late = storedLegacyRecord("late-legacy", {
+      isAllDay: false,
+      startTime: "09:00",
+      endTime: "18:00",
+      status: "partial-suspension",
+    });
+    installStoredRecords([early, late]);
+    const before = localStateStore.readState().records;
+    const fileVersion = getAdminStateFileVersion();
+
+    const result = await upsertCollectedSuspensionRecord(candidate);
+
+    expect(result).toMatchObject({ action: "held", reason: "legacy-duplicates-require-cleanup" });
+    expect(localStateStore.readState().records).toEqual(before);
+    expect(getAdminStateFileVersion()).toBe(fileVersion);
+  });
+
+  it("allows one exact legacy candidate to refine normally", async () => {
+    const exact = storedLegacyRecord("one-exact", {
+      status: "partial-suspension",
+      affectedLevels: ["preschool", "elementary", "junior-high", "senior-high"],
+    });
+    installStoredRecords([exact]);
+
+    const result = await upsertCollectedSuspensionRecord(
+      collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64))
+    );
+
+    expect(result).toMatchObject({
+      action: "updated",
+      record: { id: exact.id, status: "classes-suspended", affectedLevels: ["all-levels"] },
+    });
+    expect(localStateStore.readState().records).toHaveLength(1);
+  });
+
+  it("allows one compatible overlapping legacy candidate to refine normally", async () => {
+    const overlap = storedLegacyRecord("one-overlap", {
+      isAllDay: false,
+      startTime: "06:00",
+      endTime: "11:00",
+      status: "partial-suspension",
+      affectedLevels: ["preschool"],
+    });
+    installStoredRecords([overlap]);
+
+    const result = await upsertCollectedSuspensionRecord(
+      collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64))
+    );
+
+    expect(result).toMatchObject({
+      action: "updated",
+      record: { id: overlap.id, status: "classes-suspended", isAllDay: true },
+    });
+    expect(localStateStore.readState().records).toHaveLength(1);
+  });
+
+  it("counts one record matching both exact and overlap predicates only once", async () => {
+    const candidate = collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64));
+    const exactAndOverlapping = storedLegacyRecord("exact-and-overlap");
+    installStoredRecords([exactAndOverlapping]);
+
+    const result = await upsertCollectedSuspensionRecord(candidate);
+
+    expect(result.action).toBe("unchanged");
+    expect(result.reason).toBeUndefined();
+    expect(localStateStore.readState().records).toHaveLength(1);
+  });
+
+  it("replaces stale same-outlet evidence instead of exposing it as corroboration", async () => {
+    const firstRecord = collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64));
+    await upsertCollectedSuspensionRecord(firstRecord);
+    const secondRecord = collectedRecord("gma-news-walang-pasok", "GMA Network", "b".repeat(64));
+    secondRecord.source = { ...secondRecord.source, url: "https://gma-news-walang-pasok.example/revised", updatedAt: "2026-08-22T22:00:00+08:00" };
+    const result = await upsertCollectedSuspensionRecord(secondRecord);
+    expect(result.action).toBe("updated");
+    expect(result.record.source.url).toContain("revised");
+    expect(result.record.additionalSources).toEqual([]);
+  });
+
+  it("keeps genuinely non-overlapping windows as separate notices", async () => {
+    const morning = { ...collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64)), isAllDay: false, startTime: "06:00", endTime: "11:00", status: "partial-suspension" as const };
+    const afternoon = { ...collectedRecord("gma-news-walang-pasok", "GMA Network", "b".repeat(64)), id: "record-afternoon", isAllDay: false, startTime: "13:00", endTime: "18:00", status: "partial-suspension" as const };
+    expect((await upsertCollectedSuspensionRecord(morning)).action).toBe("created");
+    expect((await upsertCollectedSuspensionRecord(afternoon)).action).toBe("created");
+    expect(await getSuspensions()).toHaveLength(2);
+  });
+
+  it("holds a collector notice that overlaps an active legacy-key manual publication", async () => {
+    const manual = {
+      ...collectedRecord("gma-news-walang-pasok", "GMA Network", "a".repeat(64)),
+      id: "manual-precedence",
+      eventKey: "f".repeat(64),
+      parserOutcome: undefined,
+      collectorProvenance: undefined,
+      confidence: "admin-verified" as const,
+      publicationProvenance: { type: "manual-admin" as const, publicLabel: "Manually verified by ClassStatus Admin" as const },
+      manualEvidence: { providerPreset: "lgu-official-announcement", providerName: "City of Manila", proofUrl: "https://manila.example/manual" },
+    };
+    localStateStore.mutateState((state) => state.records.unshift(manual));
+    try {
+      const result = await upsertCollectedSuspensionRecord(collectedRecord("gma-news-walang-pasok", "GMA Network", "b".repeat(64)));
+      expect(result).toMatchObject({ action: "held", reason: "duplicates-manual:manual-precedence" });
+    } finally {
+      localStateStore.mutateState((state) => { state.records = state.records.filter((record) => record.id !== manual.id); });
+    }
   });
 
   it("rejects Tier 1 and records without collector provenance", async () => {
@@ -165,5 +376,9 @@ describe("Tier 3 collector policy and persistence", () => {
 
     const inactive = collectedRecord("inquirer-suspensions", "Philippine Daily Inquirer", "b".repeat(64));
     await expect(upsertCollectedSuspensionRecord(inactive)).rejects.toThrow(/operational Tier 3/);
+
+    const legacyParser = collectedRecord("gma-news-walang-pasok", "GMA Network", "c".repeat(64));
+    legacyParser.parserOutcome = "accepted:tier3-explicit-lgu-suspension";
+    await expect(upsertCollectedSuspensionRecord(legacyParser)).rejects.toThrow(/parser-policy v2/);
   });
 });

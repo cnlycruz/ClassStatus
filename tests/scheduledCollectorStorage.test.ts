@@ -132,4 +132,26 @@ describe("scheduled collector storage path", () => {
       {}
     );
   });
+
+  it("returns the Supabase public projection without requiring stripped collector metadata", async () => {
+    const projected = {
+      id: "public-record-1",
+      lguId: "pateros",
+      status: "classes-suspended",
+      publicationProvenance: {
+        type: "automatic-collector",
+        publicLabel: "Published from approved Tier 3 media evidence",
+      },
+    };
+    mocks.publicRpc.mockResolvedValueOnce({ data: [projected], error: null });
+
+    const records = await supabaseSuspensionStore.listPublicRecords();
+
+    expect(records).toEqual([projected]);
+    expect(records[0].collectorProvenance).toBeUndefined();
+    expect(records[0].administrativeState).toBeUndefined();
+    expect(mocks.publicRpc).toHaveBeenCalledWith(
+      "classstatus_production_list_public_suspensions"
+    );
+  });
 });

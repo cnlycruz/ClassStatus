@@ -37,6 +37,19 @@ describe("Suspension Lifecycle & Timezone Engine", () => {
     },
   };
 
+  const projectedAutomaticRecord = (overrides: Partial<SuspensionRecord> = {}): SuspensionRecord => ({
+    ...baseRecord,
+    publicationProvenance: {
+      type: "automatic-collector",
+      publicLabel: "Published from approved Tier 3 media evidence",
+    },
+    collectorProvenance: undefined,
+    administrativeState: undefined,
+    eventKey: undefined,
+    revision: undefined,
+    ...overrides,
+  });
+
   it("evaluates a suspension on the current date as ACTIVE", () => {
     const evaluated = evaluateSuspensionLifecycle(baseRecord, "2026-08-19", "08:00");
     expect(evaluated.state).toBe("active");
@@ -96,23 +109,62 @@ describe("Suspension Lifecycle & Timezone Engine", () => {
     expect(exactEndCheck.state).toBe("expired");
   });
 
-  it("derives LGU overall status giving priority to active full suspension", () => {
-    const derived = deriveLGUStatus("manila", [baseRecord], "2026-08-19");
+  it("derives an active full suspension from an automatic public projection", () => {
+    const projected = projectedAutomaticRecord();
+    const derived = deriveLGUStatus("manila", [projected], "2026-08-19");
     expect(derived.status).toBe("classes-suspended");
     expect(derived.primaryRecord?.lguId).toBe("manila");
+    expect(derived.activeRecords).toHaveLength(1);
+    expect(derived.primaryRecord?.collectorProvenance).toBeUndefined();
+  });
+
+  it("derives an active partial suspension from an automatic public projection", () => {
+    const projected = projectedAutomaticRecord({
+      status: "partial-suspension",
+      affectedLevels: ["elementary"],
+      schoolSector: "public",
+    });
+    const derived = deriveLGUStatus("manila", [projected], "2026-08-19");
+    expect(derived.status).toBe("partial-suspension");
+    expect(derived.activeRecords).toHaveLength(1);
   });
 
   it("derives LGU status with upcoming suspension notice flag", () => {
-    const tomorrowRecord: SuspensionRecord = {
-      ...baseRecord,
+    const tomorrowRecord = projectedAutomaticRecord({
       lguId: "marikina",
       effectiveDate: "2026-08-20",
-    };
+    });
 
     const derived = deriveLGUStatus("marikina", [tomorrowRecord], "2026-08-19");
     expect(derived.hasUpcoming).toBe(true);
     expect(derived.status).toBe("classes-suspended");
     expect(derived.upcomingRecord?.effectiveDate).toBe("2026-08-20");
+  });
+
+  it("recomputes an all-day lifecycle across the Manila effective date", () => {
+    const storedUpcoming = projectedAutomaticRecord({
+      effectiveDate: "2026-08-28",
+      lifecycleState: "upcoming",
+      isActive: false,
+      isUpcoming: true,
+      isExpired: false,
+    });
+
+    expect(evaluateSuspensionLifecycle(storedUpcoming, "2026-08-27", "23:59")).toMatchObject({
+      state: "upcoming",
+      isActive: false,
+      isUpcoming: true,
+    });
+    expect(evaluateSuspensionLifecycle(storedUpcoming, "2026-08-28", "00:00")).toMatchObject({
+      state: "active",
+      isActive: true,
+      isUpcoming: false,
+    });
+    expect(evaluateSuspensionLifecycle(storedUpcoming, "2026-08-29", "00:00")).toMatchObject({
+      state: "expired",
+      isActive: false,
+      isExpired: true,
+    });
   });
 
   it("applies scoped records only to matching school sector and levels", () => {

@@ -1,7 +1,5 @@
 import { SuspensionRecord, SuspensionStatus, LifecycleState, LGUId, SchoolInfo } from "@/types";
 import { getManilaDateString, getNow } from "@/utils/philippineTime";
-import { isLivePublicationRecord } from "./sourcePolicy";
-import { effectiveAdminState } from "@/utils/administrativeState";
 
 export interface EvaluatedSuspension extends SuspensionRecord {
   isActiveNow: boolean;
@@ -126,7 +124,8 @@ export function deriveLGUStatus(
   upcomingRecord?: SuspensionRecord;
   activeRecords: SuspensionRecord[];
 } {
-  const lguRecords = records.filter((r) => r.lguId === lguId && !r.schoolId && isLivePublicationRecord(r) && effectiveAdminState(r) === "active");
+  // Callers supply records that have already crossed the storage public-read boundary.
+  const lguRecords = records.filter((r) => r.lguId === lguId && !r.schoolId);
 
   // Evaluate all records
   const evaluated = lguRecords.map((r) => {
@@ -204,7 +203,8 @@ export function deriveLGUStatus(
 }
 
 export function suspensionAppliesToSchool(record: SuspensionRecord, school: SchoolInfo): boolean {
-  if (!isLivePublicationRecord(record) || effectiveAdminState(record) !== "active" || record.lguId !== school.lguId) return false;
+  // Public derivation must not require private provenance removed by the storage boundary.
+  if (record.lguId !== school.lguId) return false;
   if (record.schoolId) return record.schoolId === school.id;
   const sectorMatches = record.schoolSector === "all" || record.schoolSector === school.sector;
   const levelMatches =

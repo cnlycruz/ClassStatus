@@ -1,11 +1,10 @@
 import { createHash } from "crypto";
 import { CollectorLog, SuspensionRecord } from "@/types";
-import { isLivePublicationRecord, isLiveTier3Record } from "./sourcePolicy";
+import { isLiveTier3Record } from "./sourcePolicy";
 import { suspensionStore } from "@/lib/storage";
-import { effectiveAdminState } from "@/utils/administrativeState";
 
 export async function getSuspensions(): Promise<SuspensionRecord[]> {
-  return (await suspensionStore.listPublicRecords()).filter((record) => isLivePublicationRecord(record) && effectiveAdminState(record) === "active");
+  return suspensionStore.listPublicRecords();
 }
 
 export async function clearLiveSuspensions(): Promise<SuspensionRecord[]> {

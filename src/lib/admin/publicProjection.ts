@@ -1,5 +1,23 @@
 import type { SuspensionRecord } from "@/types";
 
+/**
+ * Mirrors the durable public-list projection while retaining the record shape
+ * needed for server-side lifecycle evaluation.
+ */
+export function projectPublicStorageRecord(record: SuspensionRecord): SuspensionRecord {
+  const projected = { ...record };
+  delete projected.administrativeState;
+  delete projected.revision;
+  delete projected.removalRequestedAt;
+  delete projected.undoDeadline;
+  delete projected.removalFinalizedAt;
+  delete projected.eventKey;
+  delete projected.collectorProvenance;
+  delete projected.parserOutcome;
+  delete projected.fullAnnouncementText;
+  return projected;
+}
+
 export function projectPublicSuspension(record: SuspensionRecord) {
   const manual = record.publicationProvenance?.type === "manual-admin";
   return {

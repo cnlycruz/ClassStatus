@@ -7,6 +7,7 @@ import type { AdminSecurityDocument, AdminStateDocument, AuditEntry } from "@/li
 import type { CollectorLog, SourceCitation, SuspensionRecord } from "@/types";
 import { effectiveAdminState } from "@/utils/administrativeState";
 import { isLivePublicationRecord, isLiveTier3Record } from "@/collector/sourcePolicy";
+import { projectPublicStorageRecord } from "@/lib/admin/publicProjection";
 import type { CollectedUpsertResult, SuspensionStore } from "./contracts";
 import { assertLocalJsonAvailable } from "./driver";
 
@@ -175,7 +176,9 @@ function readCollectorLogs(): CollectorLog[] {
 export const localSuspensionStore: SuspensionStore = {
   async readState() { return localStateStore.readState(); },
   async listPublicRecords() {
-    return localStateStore.readState().records.filter((record) => isLivePublicationRecord(record) && effectiveAdminState(record) === "active");
+    return localStateStore.readState().records
+      .filter((record) => isLivePublicationRecord(record) && effectiveAdminState(record) === "active")
+      .map(projectPublicStorageRecord);
   },
   async createConfirmation(sessionId, payloadHash) {
     return localStateStore.mutateState((state) => {

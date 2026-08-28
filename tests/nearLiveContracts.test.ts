@@ -7,6 +7,7 @@ const read = (...parts: string[]) => fs.readFileSync(path.join(process.cwd(), ..
 const migration = "20260825162450_add_preview_collector_schedule_and_lease.sql";
 const productionRuntimeMigration = "20260825203903_add_production_runtime_security_support.sql";
 const productionSchedulerMigration = "20260825204234_activate_production_collector_scheduler.sql";
+const publicProjectionMigration = "20260828070822_harden_public_suspension_projection.sql";
 
 describe("near-live update contracts", () => {
   it("advertises exactly one-minute polling only for the operational Tier 3 sources", () => {
@@ -74,6 +75,26 @@ describe("near-live update contracts", () => {
     expect(api).toContain('revalidate = 0');
     expect(api).toContain('"Cache-Control": "no-store"');
     expect(worker).toContain('NETWORK_ONLY_PREFIXES = ["/api/", "/collector/", "/auth/"]');
+  });
+
+  it("keeps the Supabase public list authoritative, namespace-isolated, and privately projected", () => {
+    const sql = read("supabase", "migrations", publicProjectionMigration);
+    expect(sql).toContain("security definer");
+    expect(sql).toContain("set search_path = ''");
+    expect(sql).toContain("suspension.deployment_namespace = p_namespace");
+    expect(sql).toContain("suspension.administrative_state = 'active'");
+    expect(sql).toContain("suspension.provenance_type in ('manual-admin', 'automatic-collector')");
+    expect(sql).toContain("coalesce(suspension.record -> 'isDemo', 'false'::jsonb) = 'false'::jsonb");
+    expect(sql).toContain("suspension.record #>> '{collectorProvenance,pipeline}' = 'tier3-media'");
+    expect(sql).toContain("suspension.record ->> 'confidence' = 'admin-verified'");
+    for (const privateField of [
+      "administrativeState", "revision", "eventKey", "collectorProvenance",
+      "parserOutcome", "fullAnnouncementText",
+    ]) {
+      expect(sql).toContain(`- '${privateField}'`);
+    }
+    expect(sql).toMatch(/revoke execute on function classstatus_private\.list_public_suspensions\(text\)[\s\S]*?from public, anon, authenticated, service_role;/i);
+    expect(sql).toMatch(/grant execute on function public\.classstatus_production_list_public_suspensions\(\)[\s\S]*?to anon, authenticated;/i);
   });
 
   it("keeps the cron secret server-only", () => {

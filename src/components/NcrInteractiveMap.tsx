@@ -4,6 +4,17 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { NCR_GEO_PATHS, GeoPathItem } from "@/data/ncrGeoData";
 import { LGUId, LGUInfo, SuspensionStatus, SuspensionRecord } from "@/types";
 import {
+  MapPoint,
+  NcrMapView,
+  clampNcrMapScale,
+  hasNcrMapGestureMoved,
+  initialNcrMapView,
+  ncrLabelAnchorTransform,
+  ncrMapTransform,
+  ncrPinchView,
+  shouldActivateNcrMapTarget,
+} from "@/lib/ncrMapInteraction";
+import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
@@ -32,6 +43,48 @@ type MapLabelPlacement = {
   text?: string;
   lines?: string[];
 };
+
+type LabelNode = {
+  element: SVGGElement;
+  anchor: MapPoint;
+};
+
+type MapGesture = {
+  pointers: Map<number, MapPoint>;
+  mode: "idle" | "pan" | "pinch";
+  startPoint: MapPoint;
+  dragOffset: MapPoint;
+  pinchStartDistance: number;
+  pinchStartMidpoint: MapPoint;
+  pinchViewportCenter: MapPoint;
+  pinchStartView: NcrMapView;
+  hasMoved: boolean;
+  hasPinched: boolean;
+};
+
+function pointDistance(first: MapPoint, second: MapPoint): number {
+  return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+function pointMidpoint(first: MapPoint, second: MapPoint): MapPoint {
+  return { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+}
+
+function createMapGesture(): MapGesture {
+  const initialView = initialNcrMapView();
+  return {
+    pointers: new Map(),
+    mode: "idle",
+    startPoint: { x: 0, y: 0 },
+    dragOffset: { x: 0, y: 0 },
+    pinchStartDistance: 0,
+    pinchStartMidpoint: { x: 0, y: 0 },
+    pinchViewportCenter: { x: 0, y: 0 },
+    pinchStartView: initialView,
+    hasMoved: false,
+    hasPinched: false,
+  };
+}
 
 // Visual interior anchors, chosen from each path's largest usable interior
 // area and then optically centered for the rendered overview. Keeping this
@@ -66,25 +119,20 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
   statusFilter,
 }: NcrInteractiveMapProps) {
   const [hoveredLguId, setHoveredLguId] = useState<LGUId | null>(null);
-
-  // Pan and Zoom state
-  const [scale, setScale] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const labelFontScale = 1 / Math.min(Math.max(scale, 0.7), 4);
-
-  // Touch tracking for pinch-to-zoom
-  const touchStartRef = useRef<{ dist: number; scale: number; pan: { x: number; y: number } } | null>(null);
-  const gestureRef = useRef({ startX: 0, startY: 0, hasMoved: false, hasPinched: false });
   const containerRef = useRef<HTMLDivElement>(null);
+  const transformLayerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const panRef = useRef(pan);
-  const pendingPanRef = useRef(pan);
-  const panFrameRef = useRef<number | null>(null);
+  const labelNodesRef = useRef(new Map<string, LabelNode>());
+  const labelRefCallbacksRef = useRef(new Map<string, (element: SVGGElement | null) => void>());
+  const viewRef = useRef<NcrMapView>(initialNcrMapView());
+  const pendingViewRef = useRef<NcrMapView>(viewRef.current);
+  const renderedLabelScaleRef = useRef<number | null>(null);
+  const viewFrameRef = useRef<number | null>(null);
+  const transformSettleTimerRef = useRef<number | null>(null);
   const tooltipFrameRef = useRef<number | null>(null);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
-  const dragStartRef = useRef({ x: 0, y: 0 });
+  const gestureRef = useRef<MapGesture>(createMapGesture());
 
   // Map LGU ID to status and data
   const lguMap = React.useMemo(() => {
@@ -93,37 +141,78 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
     return map;
   }, [lgus]);
 
-  const handleZoom = useCallback((delta: number) => {
-    setScale((prev) => Math.min(Math.max(prev + delta, 0.7), 4.0));
+  const getLabelNodeRef = useCallback((id: string, anchor: MapPoint) => {
+    const existing = labelRefCallbacksRef.current.get(id);
+    if (existing) return existing;
+    const callback = (element: SVGGElement | null) => {
+      if (!element) {
+        labelNodesRef.current.delete(id);
+        return;
+      }
+      labelNodesRef.current.set(id, { element, anchor });
+      element.setAttribute("transform", ncrLabelAnchorTransform(anchor, viewRef.current.scale));
+    };
+    labelRefCallbacksRef.current.set(id, callback);
+    return callback;
   }, []);
 
-  const handleResetZoom = useCallback(() => {
-    setScale(1);
-    if (panFrameRef.current) {
-      cancelAnimationFrame(panFrameRef.current);
-      panFrameRef.current = null;
+  const applyView = useCallback((view: NcrMapView) => {
+    const transformLayer = transformLayerRef.current;
+    if (transformLayer) transformLayer.style.transform = ncrMapTransform(view);
+
+    if (renderedLabelScaleRef.current !== view.scale) {
+      labelNodesRef.current.forEach(({ element, anchor }) => {
+        element.setAttribute("transform", ncrLabelAnchorTransform(anchor, view.scale));
+      });
+      renderedLabelScaleRef.current = view.scale;
     }
-    panRef.current = { x: 0, y: 0 };
-    pendingPanRef.current = panRef.current;
-    setPan(panRef.current);
   }, []);
+
+  const markTransformActive = useCallback(() => {
+    const transformLayer = transformLayerRef.current;
+    if (transformLayer) transformLayer.style.willChange = "transform";
+    if (transformSettleTimerRef.current !== null) window.clearTimeout(transformSettleTimerRef.current);
+    transformSettleTimerRef.current = window.setTimeout(() => {
+      transformSettleTimerRef.current = null;
+      if (transformLayerRef.current) transformLayerRef.current.style.willChange = "auto";
+    }, 140);
+  }, []);
+
+  const scheduleView = useCallback((nextView: NcrMapView) => {
+    viewRef.current = nextView;
+    pendingViewRef.current = nextView;
+    markTransformActive();
+    if (viewFrameRef.current !== null) return;
+
+    viewFrameRef.current = requestAnimationFrame(() => {
+      viewFrameRef.current = null;
+      applyView(pendingViewRef.current);
+    });
+  }, [applyView, markTransformActive]);
+
+  const handleZoom = useCallback((delta: number) => {
+    const current = viewRef.current;
+    scheduleView({ ...current, scale: clampNcrMapScale(current.scale + delta) });
+  }, [scheduleView]);
+
+  const handleResetZoom = useCallback(() => {
+    if (viewFrameRef.current !== null) {
+      cancelAnimationFrame(viewFrameRef.current);
+      viewFrameRef.current = null;
+    }
+    const initialView = initialNcrMapView();
+    viewRef.current = initialView;
+    pendingViewRef.current = initialView;
+    markTransformActive();
+    applyView(initialView);
+  }, [applyView, markTransformActive]);
 
   useEffect(() => {
     return () => {
-      if (panFrameRef.current) cancelAnimationFrame(panFrameRef.current);
-      if (tooltipFrameRef.current) cancelAnimationFrame(tooltipFrameRef.current);
+      if (viewFrameRef.current !== null) cancelAnimationFrame(viewFrameRef.current);
+      if (tooltipFrameRef.current !== null) cancelAnimationFrame(tooltipFrameRef.current);
+      if (transformSettleTimerRef.current !== null) window.clearTimeout(transformSettleTimerRef.current);
     };
-  }, []);
-
-  const schedulePan = useCallback((nextPan: { x: number; y: number }) => {
-    panRef.current = nextPan;
-    pendingPanRef.current = nextPan;
-    if (panFrameRef.current) return;
-
-    panFrameRef.current = requestAnimationFrame(() => {
-      panFrameRef.current = null;
-      setPan(pendingPanRef.current);
-    });
   }, []);
 
   const updateTooltipPosition = useCallback((clientX: number, clientY: number) => {
@@ -158,97 +247,118 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
     return () => container.removeEventListener("wheel", handleNativeWheel);
   }, [handleZoom]);
 
-  // Mouse drag handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    gestureRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      hasMoved: false,
-      hasPinched: false,
+  const beginPinch = useCallback(() => {
+    const gesture = gestureRef.current;
+    const [first, second] = Array.from(gesture.pointers.values());
+    const container = containerRef.current;
+    if (!first || !second || !container) return;
+    const rect = container.getBoundingClientRect();
+    gesture.mode = "pinch";
+    gesture.hasMoved = true;
+    gesture.hasPinched = true;
+    gesture.pinchStartDistance = pointDistance(first, second);
+    gesture.pinchStartMidpoint = pointMidpoint(first, second);
+    gesture.pinchViewportCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    gesture.pinchStartView = {
+      scale: viewRef.current.scale,
+      pan: { ...viewRef.current.pan },
     };
-    setIsDragging(true);
-    dragStartRef.current = { x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y };
-  };
+  }, []);
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging) {
-      if (Math.hypot(e.clientX - gestureRef.current.startX, e.clientY - gestureRef.current.startY) > 8) {
-        gestureRef.current.hasMoved = true;
-      }
-      schedulePan({
-        x: e.clientX - dragStartRef.current.x,
-        y: e.clientY - dragStartRef.current.y,
-      });
-    }
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const target = event.target as Element;
+    if (target.closest("[data-map-overlay]")) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
 
-    updateTooltipPosition(e.clientX, e.clientY);
-  };
+    const point = { x: event.clientX, y: event.clientY };
+    const gesture = gestureRef.current;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    gesture.pointers.set(event.pointerId, point);
 
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  // Touch handlers for mobile
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 1) {
-      gestureRef.current = {
-        startX: e.touches[0].clientX,
-        startY: e.touches[0].clientY,
-        hasMoved: false,
-        hasPinched: false,
+    if (gesture.pointers.size === 1) {
+      gesture.mode = "pan";
+      gesture.startPoint = point;
+      gesture.dragOffset = {
+        x: point.x - viewRef.current.pan.x,
+        y: point.y - viewRef.current.pan.y,
       };
-      setIsDragging(true);
-      dragStartRef.current = {
-        x: e.touches[0].clientX - panRef.current.x,
-        y: e.touches[0].clientY - panRef.current.y,
-      };
-    } else if (e.touches.length === 2) {
-      gestureRef.current.hasPinched = true;
-      gestureRef.current.hasMoved = true;
-      // Pinch zoom start
-      const t1 = e.touches[0];
-      const t2 = e.touches[1];
-      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-      touchStartRef.current = { dist, scale, pan: { ...pan } };
+      gesture.hasMoved = false;
+      gesture.hasPinched = false;
+    } else if (gesture.pointers.size === 2) {
+      beginPinch();
     }
-  };
+  }, [beginPinch]);
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 1 && isDragging) {
-      if (
-        Math.hypot(
-          e.touches[0].clientX - gestureRef.current.startX,
-          e.touches[0].clientY - gestureRef.current.startY
-        ) > 8
-      ) {
-        gestureRef.current.hasMoved = true;
-      }
-      schedulePan({
-        x: e.touches[0].clientX - dragStartRef.current.x,
-        y: e.touches[0].clientY - dragStartRef.current.y,
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse") updateTooltipPosition(event.clientX, event.clientY);
+
+    const gesture = gestureRef.current;
+    if (!gesture.pointers.has(event.pointerId)) return;
+    const point = { x: event.clientX, y: event.clientY };
+    gesture.pointers.set(event.pointerId, point);
+
+    if (gesture.mode === "pan" && gesture.pointers.size === 1) {
+      if (hasNcrMapGestureMoved(gesture.startPoint, point)) gesture.hasMoved = true;
+      scheduleView({
+        scale: viewRef.current.scale,
+        pan: {
+          x: point.x - gesture.dragOffset.x,
+          y: point.y - gesture.dragOffset.y,
+        },
       });
-    } else if (e.touches.length === 2 && touchStartRef.current) {
-      const t1 = e.touches[0];
-      const t2 = e.touches[1];
-      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-      const factor = dist / touchStartRef.current.dist;
-      const newScale = Math.min(Math.max(touchStartRef.current.scale * factor, 0.7), 4.0);
-      setScale(newScale);
+      return;
     }
-  };
 
-  const handleTouchEnd = () => {
-    setIsDragging(false);
-    touchStartRef.current = null;
-  };
+    if (gesture.mode === "pinch" && gesture.pointers.size >= 2 && gesture.pinchStartDistance > 0) {
+      const [first, second] = Array.from(gesture.pointers.values());
+      const currentDistance = pointDistance(first, second);
+      const currentMidpoint = pointMidpoint(first, second);
+      scheduleView(ncrPinchView({
+        startView: gesture.pinchStartView,
+        startMidpoint: gesture.pinchStartMidpoint,
+        currentMidpoint,
+        viewportCenter: gesture.pinchViewportCenter,
+        nextScale: gesture.pinchStartView.scale * (currentDistance / gesture.pinchStartDistance),
+      }));
+    }
+  }, [scheduleView, updateTooltipPosition]);
+
+  const finishPointer = useCallback((event: React.PointerEvent<HTMLDivElement>, cancelled = false) => {
+    const gesture = gestureRef.current;
+    if (!gesture.pointers.has(event.pointerId)) return;
+    if (cancelled) gesture.hasMoved = true;
+    gesture.pointers.delete(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    if (gesture.pointers.size >= 2) {
+      beginPinch();
+      return;
+    }
+    if (gesture.pointers.size === 1) {
+      const remaining = Array.from(gesture.pointers.values())[0];
+      gesture.mode = "pan";
+      gesture.startPoint = remaining;
+      gesture.dragOffset = {
+        x: remaining.x - viewRef.current.pan.x,
+        y: remaining.y - viewRef.current.pan.y,
+      };
+      return;
+    }
+    gesture.mode = "idle";
+  }, [beginPinch]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as Element;
+    const gesture = gestureRef.current;
     if (
-      !gestureRef.current.hasMoved &&
-      !gestureRef.current.hasPinched &&
-      target instanceof SVGElement &&
+      shouldActivateNcrMapTarget(gesture) &&
+      !target.closest("[data-map-overlay]") &&
+      (target === containerRef.current ||
+        target === transformLayerRef.current ||
+        target === svgRef.current ||
+        Boolean(svgRef.current?.contains(target))) &&
       !target.closest(".ncr-map-lgu") &&
       !target.closest("#ncr-labels")
     ) {
@@ -281,17 +391,13 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
   return (
     <div
       ref={containerRef}
-      className="ncr-map-canvas relative w-full h-[58dvh] min-h-[420px] sm:h-[min(620px,65dvh)] lg:h-auto lg:flex-1 lg:min-h-0 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden select-none touch-none"
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={() => {
-        handleMouseUp();
-        setHoveredLguId(null);
-      }}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
+      className="ncr-map-canvas relative w-full h-[58dvh] min-h-[420px] sm:h-[min(620px,65dvh)] lg:h-auto lg:flex-1 lg:min-h-0 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden select-none touch-none cursor-grab active:cursor-grabbing"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishPointer}
+      onPointerCancel={(event) => finishPointer(event, true)}
+      onLostPointerCapture={(event) => finishPointer(event, true)}
+      onPointerLeave={() => setHoveredLguId(null)}
       onClick={handleCanvasClick}
       role="region"
       aria-label="Interactive Map of Metro Manila Class Suspension Status"
@@ -306,7 +412,10 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
       />
 
       {/* Floating Zoom & Map Action Controls (Mobile-first Touch Friendly) */}
-      <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex flex-col gap-1.5 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-700/80 shadow-xl backdrop-blur-md">
+      <div
+        data-map-overlay
+        className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex flex-col gap-1.5 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-700/80 shadow-xl backdrop-blur-md"
+      >
         <button
           onClick={() => handleZoom(0.3)}
           className="map-touch-control flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-xl text-slate-200 hover:bg-slate-800 active:bg-slate-700 transition-colors"
@@ -335,7 +444,10 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
       </div>
 
       {/* Desktop Map Legend Overlay */}
-      <div className="absolute bottom-4 left-4 z-20 hidden sm:flex flex-col gap-1.5 bg-slate-900/95 text-slate-200 p-3.5 rounded-2xl border border-slate-800 shadow-xl backdrop-blur text-xs">
+      <div
+        data-map-overlay
+        className="absolute bottom-4 left-4 z-20 hidden sm:flex flex-col gap-1.5 bg-slate-900/95 text-slate-200 p-3.5 rounded-2xl border border-slate-800 shadow-xl backdrop-blur text-xs"
+      >
         <div className="font-bold text-white mb-1 flex items-center justify-between gap-4">
           <span className="flex items-center gap-1.5">
             <Layers className="h-3.5 w-3.5 text-blue-400" />
@@ -363,16 +475,20 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
         </div>
       </div>
 
-      {/* SVG Canvas with Accurate Geographic PSGC Municipal Borders */}
-      <svg
-        ref={svgRef}
-        viewBox="0 0 800 1000"
-        className={`w-full h-full cursor-${isDragging ? "grabbing" : "grab"} transition-transform duration-75`}
+      {/* One compositor-friendly layer owns viewport movement; SVG geometry stays unchanged. */}
+      <div
+        ref={transformLayerRef}
+        className="absolute inset-0"
         style={{
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
           transformOrigin: "center center",
         }}
       >
+        {/* SVG Canvas with Accurate Geographic PSGC Municipal Borders */}
+        <svg
+          ref={svgRef}
+          viewBox="0 0 800 1000"
+          className="w-full h-full"
+        >
         <defs>
           <filter id="lgu-selected-glow" x="-20%" y="-20%" width="140%" height="140%">
             <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="#60A5FA" floodOpacity="0.8" />
@@ -407,9 +523,17 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
                 tabIndex={0}
                 role="button"
                 aria-label={`${lguData?.name || pathItem.name}: ${status}`}
-                onMouseEnter={() => setHoveredLguId(pathItem.lguId)}
+                onPointerEnter={(event) => {
+                  if (event.pointerType === "mouse" && gestureRef.current.pointers.size === 0) {
+                    setHoveredLguId(pathItem.lguId);
+                  }
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!shouldActivateNcrMapTarget(gestureRef.current)) {
+                    e.preventDefault();
+                    return;
+                  }
                   onSelectLgu(pathItem.lguId);
                   if (typeof navigator !== "undefined" && navigator.vibrate) {
                     navigator.vibrate(15);
@@ -450,10 +574,14 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
                 key={`label-${pathItem.id}`}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!shouldActivateNcrMapTarget(gestureRef.current)) {
+                    e.preventDefault();
+                    return;
+                  }
                   onSelectLgu(pathItem.lguId);
                 }}
               >
-                <g>
+                <g ref={getLabelNodeRef(pathItem.id, { x: placement.x, y: placement.y })}>
                   <text
                     x={placement.x}
                     y={placement.y}
@@ -467,7 +595,7 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
                       isSelected ? "fill-blue-200" : isHovered ? "fill-white" : "fill-slate-100"
                     }`}
                     style={{
-                      fontSize: `${Math.min(24, Math.max(2.5, (placement.fontSize + (isSelected || isHovered ? 0.5 : 0)) * labelFontScale))}px`,
+                      fontSize: `${placement.fontSize + (isSelected || isHovered ? 0.5 : 0)}px`,
                       fontWeight: isSelected || isHovered ? "800" : "700",
                     }}
                   >
@@ -494,7 +622,8 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
             );
           })}
         </g>
-      </svg>
+        </svg>
+      </div>
 
       {/* Dynamic Hover Tooltip (Desktop) */}
       {hoveredLguData && (

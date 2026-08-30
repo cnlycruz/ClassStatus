@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  DASHBOARD_REFRESH_INTERVAL_MS,
+  millisecondsUntilNextDashboardRefresh,
   startVisibilityAwareDashboardRefresh,
   type VisibilityTarget,
 } from "@/lib/dashboardRefresh";
@@ -20,34 +20,45 @@ class FakeVisibilityTarget implements VisibilityTarget {
 
 afterEach(() => vi.useRealTimers());
 
-describe("visibility-aware dashboard refresh", () => {
-  it("polls every 30 seconds only while visible", () => {
+describe("wall-clock dashboard refresh", () => {
+  it("aligns the next refresh to second 30", () => {
+    expect(millisecondsUntilNextDashboardRefresh(Date.parse("2026-08-30T12:00:05.000Z"))).toBe(25_000);
+    expect(millisecondsUntilNextDashboardRefresh(Date.parse("2026-08-30T12:00:29.000Z"))).toBe(1_000);
+    expect(millisecondsUntilNextDashboardRefresh(Date.parse("2026-08-30T12:00:30.001Z"))).toBe(59_999);
+  });
+
+  it("stays aligned across repeated runs and pauses while hidden", async () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-30T12:00:05.000Z"));
     const target = new FakeVisibilityTarget();
     const refresh = vi.fn();
     const stop = startVisibilityAwareDashboardRefresh({ visibilityTarget: target, refresh });
 
-    vi.advanceTimersByTime(DASHBOARD_REFRESH_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(25_000);
     expect(refresh).toHaveBeenCalledTimes(1);
+    expect(Date.now()).toBe(Date.parse("2026-08-30T12:00:30.000Z"));
+
     target.setVisibility("hidden");
-    vi.advanceTimersByTime(DASHBOARD_REFRESH_INTERVAL_MS * 2);
+    await vi.advanceTimersByTimeAsync(60_000);
     expect(refresh).toHaveBeenCalledTimes(1);
 
     target.setVisibility("visible");
     expect(refresh).toHaveBeenCalledTimes(2);
-    vi.advanceTimersByTime(DASHBOARD_REFRESH_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(60_000);
     expect(refresh).toHaveBeenCalledTimes(3);
+    expect(new Date(Date.now()).getUTCSeconds()).toBe(30);
     stop();
   });
 
-  it("starts paused when the page is hidden and refreshes immediately on return", () => {
+  it("starts paused when hidden and refreshes immediately on return", async () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-30T12:00:05.000Z"));
     const target = new FakeVisibilityTarget();
     target.visibilityState = "hidden";
     const refresh = vi.fn();
     const stop = startVisibilityAwareDashboardRefresh({ visibilityTarget: target, refresh });
 
-    vi.advanceTimersByTime(DASHBOARD_REFRESH_INTERVAL_MS * 2);
+    await vi.advanceTimersByTimeAsync(90_000);
     expect(refresh).not.toHaveBeenCalled();
     target.setVisibility("visible");
     expect(refresh).toHaveBeenCalledOnce();

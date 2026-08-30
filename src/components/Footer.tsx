@@ -1,12 +1,12 @@
 import React from "react";
 import Link from "next/link";
 import { ShieldCheck, Clock, MapPin } from "lucide-react";
-import { AdminLiveOperationsSlot } from "@/components/AdminLiveOperationsSlot";
+import { CollectorLiveConsoleSlot } from "@/components/CollectorLiveConsoleSlot";
 
 export function Footer() {
   return (
     <>
-      <AdminLiveOperationsSlot />
+      <CollectorLiveConsoleSlot />
       <footer className="mt-16 border-t border-slate-200/80 bg-white/60 dark:border-slate-800/80 dark:bg-slate-950/60 backdrop-blur text-xs text-slate-500 dark:text-slate-400">
         <div className="mx-auto max-w-7xl 2xl:max-w-[min(90vw,1920px)] px-4 py-8 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 gap-8 md:grid-cols-4">

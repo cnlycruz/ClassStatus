@@ -4,7 +4,6 @@ import "./globals.css";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import { ThemeProvider } from "@/components/ThemeContext";
 import { ThemeFavicon } from "@/components/ThemeFavicon";
-import { PublicRealtimeBridge } from "@/components/PublicRealtimeBridge";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -69,7 +68,6 @@ export default function RootLayout({
       <body className="min-h-screen flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased selection:bg-blue-500 selection:text-white transition-colors duration-200">
         <ThemeProvider>
           <ThemeFavicon />
-          <PublicRealtimeBridge />
           {children}
           <ServiceWorkerRegistration />
         </ThemeProvider>

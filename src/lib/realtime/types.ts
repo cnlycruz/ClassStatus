@@ -17,4 +17,6 @@ export interface PublicTrafficMetrics {
   totalVisits: number;
   todayVisits: number;
   last15Minutes: number;
+  activeNow: number;
+  mostViewed: Array<{ id: string; count: number }>;
 }

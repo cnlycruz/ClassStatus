@@ -9,6 +9,11 @@ const trafficSchema = z.object({
   totalVisits: z.coerce.number().int().nonnegative(),
   todayVisits: z.coerce.number().int().nonnegative(),
   last15Minutes: z.coerce.number().int().nonnegative(),
+  activeNow: z.coerce.number().int().nonnegative(),
+  mostViewed: z.array(z.object({
+    id: z.string().min(1).max(80),
+    count: z.coerce.number().int().nonnegative(),
+  })).max(5),
 });
 
 const announcementSchema = z.object({

@@ -9,6 +9,11 @@ const VISITOR_ID_KEY = "classstatus.visitor.id";
 const VISIT_SESSION_KEY = "classstatus.visit.session";
 const SESSION_TTL_MS = 30 * 60 * 1000;
 
+type LooseRpc = (
+  functionName: string,
+  args?: Record<string, unknown>
+) => Promise<{ data: unknown; error: unknown }>;
+
 function readOrCreateVisitorId(): string {
   const existing = window.localStorage.getItem(VISITOR_ID_KEY);
   if (existing && /^[0-9a-f-]{36}$/i.test(existing)) return existing;
@@ -118,14 +123,15 @@ export function PublicRealtimeBridge() {
       client = createClient(config.url, config.publishableKey, {
         auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
       });
+      const rpc = client.rpc.bind(client) as unknown as LooseRpc;
 
       const visitorId = readOrCreateVisitorId();
       const visit = readOrCreateVisitSession();
       if (visit.isNew) {
-        void client.rpc(`classstatus_${config.namespace}_record_visit`, { p_visit_id: visit.id });
+        void rpc(`classstatus_${config.namespace}_record_visit`, { p_visit_id: visit.id });
       }
 
-      const { data: current } = await client.rpc(`classstatus_${config.namespace}_current_announcement`);
+      const { data: current } = await rpc(`classstatus_${config.namespace}_current_announcement`);
       if (!cancelled) showAnnouncement(normalizeAnnouncement(current));
 
       channel = client.channel(`classstatus:${config.namespace}:public`, {

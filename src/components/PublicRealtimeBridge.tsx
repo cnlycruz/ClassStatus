@@ -8,6 +8,7 @@ import type { ClassStatusRealtimeConfig, PublicAnnouncement } from "@/lib/realti
 const VISITOR_ID_KEY = "classstatus.visitor.id";
 const VISIT_SESSION_KEY = "classstatus.visit.session";
 const SESSION_TTL_MS = 30 * 60 * 1000;
+const ACTIVE_HEARTBEAT_INTERVAL_MS = 15_000;
 
 type LooseRpc = (
   functionName: string,
@@ -78,7 +79,9 @@ export function PublicRealtimeBridge() {
     let cancelled = false;
     let channel: RealtimeChannel | null = null;
     let client: ReturnType<typeof createClient> | null = null;
+    let heartbeatTimer: number | null = null;
     let currentLguId: string | null = null;
+    let touchHeartbeat: (() => void) | null = null;
 
     const showAnnouncement = (candidate: PublicAnnouncement | null) => {
       if (announcementTimer.current !== null) {
@@ -101,19 +104,14 @@ export function PublicRealtimeBridge() {
       }, remaining);
     };
 
-    const updatePresence = () => {
-      if (!channel) return;
-      void channel.track({
-        path: pathname,
-        lguId: currentLguId,
-        updatedAt: new Date().toISOString(),
-      });
-    };
-
     const handleLguView = (event: Event) => {
       const custom = event as CustomEvent<{ lguId?: string }>;
       currentLguId = typeof custom.detail?.lguId === "string" ? custom.detail.lguId : null;
-      updatePresence();
+      touchHeartbeat?.();
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") touchHeartbeat?.();
     };
 
     const start = async () => {
@@ -128,17 +126,32 @@ export function PublicRealtimeBridge() {
       const visitorId = readOrCreateVisitorId();
       const visitId = readOrCreateVisitSession();
 
-      // This RPC is idempotent by visit_id. Call it on every page bootstrap so a
-      // transient first-call failure cannot permanently lose the whole 30-minute session.
+      // Both calls are idempotent. Repeating them on bootstrap recovers cleanly from
+      // transient network failures without inflating visits or duplicating visitors.
       await rpc(`classstatus_${config.namespace}_record_visit`, { p_visit_id: visitId });
+
+      const heartbeat = async () => {
+        if (cancelled || document.visibilityState !== "visible") return;
+        await rpc(`classstatus_${config.namespace}_touch_presence`, {
+          p_visitor_id: visitorId,
+          p_path: pathname,
+          p_lgu_id: currentLguId,
+        });
+      };
+
+      touchHeartbeat = () => {
+        void heartbeat().catch(() => undefined);
+      };
+
+      await heartbeat().catch(() => undefined);
+      heartbeatTimer = window.setInterval(touchHeartbeat, ACTIVE_HEARTBEAT_INTERVAL_MS);
 
       const { data: current } = await rpc(`classstatus_${config.namespace}_current_announcement`);
       if (!cancelled) showAnnouncement(normalizeAnnouncement(current));
 
-      channel = client.channel(`classstatus:${config.namespace}:public`, {
-        config: { presence: { key: visitorId } },
-      });
-
+      // Realtime remains useful for instant announcements, but Active Now no longer
+      // depends on WebSocket Presence. The heartbeat above also works reliably in iOS PWAs.
+      channel = client.channel(`classstatus:${config.namespace}:public`);
       channel
         .on(
           "postgres_changes",
@@ -158,23 +171,18 @@ export function PublicRealtimeBridge() {
             }));
           }
         )
-        .subscribe(async (status) => {
-          if (status !== "SUBSCRIBED" || cancelled) return;
-          await channel?.track({
-            path: pathname,
-            lguId: currentLguId,
-            updatedAt: new Date().toISOString(),
-          });
-        });
-
-      window.addEventListener("classstatus:lgu-view", handleLguView);
+        .subscribe();
     };
 
+    window.addEventListener("classstatus:lgu-view", handleLguView);
+    document.addEventListener("visibilitychange", handleVisibility);
     void start().catch(() => undefined);
 
     return () => {
       cancelled = true;
       window.removeEventListener("classstatus:lgu-view", handleLguView);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
       if (announcementTimer.current !== null) {
         window.clearTimeout(announcementTimer.current);
         announcementTimer.current = null;

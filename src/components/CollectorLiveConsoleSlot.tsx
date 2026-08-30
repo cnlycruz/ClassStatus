@@ -62,13 +62,14 @@ export function CollectorLiveConsoleSlot() {
     setPortalHost(host);
 
     return () => {
-      setPortalHost(null);
       if (legacyConsole) legacyConsole.style.display = "";
       host.remove();
     };
   }, []);
 
   useEffect(() => {
+    if (!portalHost) return;
+
     const source = new EventSource("/api/admin/live/logs");
 
     const receive = (event: MessageEvent<string>) => {
@@ -95,7 +96,7 @@ export function CollectorLiveConsoleSlot() {
     source.addEventListener("stream-error", () => setStreamState("reconnecting"));
 
     return () => source.close();
-  }, []);
+  }, [portalHost]);
 
   useEffect(() => {
     pausedRef.current = paused;

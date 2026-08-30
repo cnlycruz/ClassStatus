@@ -22,7 +22,7 @@ function readOrCreateVisitorId(): string {
   return created;
 }
 
-function readOrCreateVisitSession(): { id: string; isNew: boolean } {
+function readOrCreateVisitSession(): string {
   const now = Date.now();
   try {
     const parsed = JSON.parse(window.localStorage.getItem(VISIT_SESSION_KEY) || "null") as {
@@ -36,7 +36,7 @@ function readOrCreateVisitSession(): { id: string; isNew: boolean } {
       typeof parsed.expiresAt === "number" &&
       parsed.expiresAt > now
     ) {
-      return { id: parsed.id, isNew: false };
+      return parsed.id;
     }
   } catch {
     // Invalid local state is replaced below.
@@ -47,7 +47,7 @@ function readOrCreateVisitSession(): { id: string; isNew: boolean } {
     VISIT_SESSION_KEY,
     JSON.stringify({ id, expiresAt: now + SESSION_TTL_MS })
   );
-  return { id, isNew: true };
+  return id;
 }
 
 function normalizeAnnouncement(value: unknown): PublicAnnouncement | null {
@@ -126,10 +126,11 @@ export function PublicRealtimeBridge() {
       const rpc = client.rpc.bind(client) as unknown as LooseRpc;
 
       const visitorId = readOrCreateVisitorId();
-      const visit = readOrCreateVisitSession();
-      if (visit.isNew) {
-        void rpc(`classstatus_${config.namespace}_record_visit`, { p_visit_id: visit.id });
-      }
+      const visitId = readOrCreateVisitSession();
+
+      // This RPC is idempotent by visit_id. Call it on every page bootstrap so a
+      // transient first-call failure cannot permanently lose the whole 30-minute session.
+      await rpc(`classstatus_${config.namespace}_record_visit`, { p_visit_id: visitId });
 
       const { data: current } = await rpc(`classstatus_${config.namespace}_current_announcement`);
       if (!cancelled) showAnnouncement(normalizeAnnouncement(current));
@@ -157,8 +158,13 @@ export function PublicRealtimeBridge() {
             }));
           }
         )
-        .subscribe((status) => {
-          if (status === "SUBSCRIBED") updatePresence();
+        .subscribe(async (status) => {
+          if (status !== "SUBSCRIBED" || cancelled) return;
+          await channel?.track({
+            path: pathname,
+            lguId: currentLguId,
+            updatedAt: new Date().toISOString(),
+          });
         });
 
       window.addEventListener("classstatus:lgu-view", handleLguView);

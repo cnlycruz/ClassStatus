@@ -2,7 +2,6 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { createClient, type RealtimeChannel } from "@supabase/supabase-js";
 import {
   Activity,
   BellRing,
@@ -17,7 +16,7 @@ import {
 } from "lucide-react";
 import { groupCollectorLogs } from "@/collector/logRuns";
 import { NCR_LGUS } from "@/data/lgus";
-import type { ClassStatusRealtimeConfig, PublicAnnouncement, PublicTrafficMetrics } from "@/lib/realtime/types";
+import type { PublicAnnouncement, PublicTrafficMetrics } from "@/lib/realtime/types";
 import type { CollectorLog } from "@/types";
 
 type LiveBootstrap = {
@@ -79,7 +78,6 @@ export function AdminLiveOperationsSlot() {
   const logViewport = useRef<HTMLDivElement>(null);
   const [activeNow, setActiveNow] = useState(0);
   const [mostViewed, setMostViewed] = useState<Array<{ id: string; count: number }>>([]);
-  const [presenceConnected, setPresenceConnected] = useState(false);
   const [announcementMessage, setAnnouncementMessage] = useState("");
   const [announcementBusy, setAnnouncementBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -92,7 +90,10 @@ export function AdminLiveOperationsSlot() {
       return;
     }
     if (!response.ok) throw new Error("Live operations data is unavailable.");
-    setBootstrap(await response.json() as LiveBootstrap);
+    const payload = await response.json() as LiveBootstrap;
+    setBootstrap(payload);
+    setActiveNow(payload.traffic.activeNow);
+    setMostViewed(payload.traffic.mostViewed);
   }, [router]);
 
   useEffect(() => {
@@ -100,7 +101,7 @@ export function AdminLiveOperationsSlot() {
     void loadBootstrap().catch((reason) => setError(reason instanceof Error ? reason.message : "Live operations unavailable."));
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void loadBootstrap().catch(() => undefined);
-    }, 30_000);
+    }, 5_000);
     return () => window.clearInterval(timer);
   }, [loadBootstrap, pathname]);
 
@@ -122,52 +123,6 @@ export function AdminLiveOperationsSlot() {
     source.addEventListener("snapshot", receive as EventListener);
     source.addEventListener("logs", receive as EventListener);
     return () => source.close();
-  }, [pathname]);
-
-  useEffect(() => {
-    if (pathname !== "/collector") return;
-    let client: ReturnType<typeof createClient> | null = null;
-    let channel: RealtimeChannel | null = null;
-    let cancelled = false;
-
-    const syncPresence = () => {
-      if (!channel) return;
-      const state = channel.presenceState<Record<string, unknown>>();
-      const keys = Object.keys(state);
-      setActiveNow(keys.length);
-      const counts = new Map<string, number>();
-      for (const key of keys) {
-        const entries = state[key] || [];
-        const latest = [...entries].reverse().find((entry) => typeof entry.lguId === "string" && entry.lguId);
-        const lguId = typeof latest?.lguId === "string" ? latest.lguId : null;
-        if (lguId && lguId in NCR_LGUS) counts.set(lguId, (counts.get(lguId) || 0) + 1);
-      }
-      setMostViewed(Array.from(counts, ([id, count]) => ({ id, count })).sort((a, b) => b.count - a.count).slice(0, 5));
-    };
-
-    const start = async () => {
-      const response = await fetch("/api/realtime/config", { cache: "no-store" });
-      if (!response.ok || cancelled) return;
-      const config = await response.json() as ClassStatusRealtimeConfig;
-      client = createClient(config.url, config.publishableKey, {
-        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-      });
-      channel = client.channel(`classstatus:${config.namespace}:public`);
-      channel
-        .on("presence", { event: "sync" }, syncPresence)
-        .on("presence", { event: "join" }, syncPresence)
-        .on("presence", { event: "leave" }, syncPresence)
-        .subscribe((status) => {
-          setPresenceConnected(status === "SUBSCRIBED");
-          if (status === "SUBSCRIBED") syncPresence();
-        });
-    };
-
-    void start().catch(() => setPresenceConnected(false));
-    return () => {
-      cancelled = true;
-      if (client && channel) void client.removeChannel(channel);
-    };
   }, [pathname]);
 
   useEffect(() => {
@@ -262,7 +217,7 @@ export function AdminLiveOperationsSlot() {
       {(notice || error) && <div className={`rounded-xl border px-4 py-3 text-sm ${error ? "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200" : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"}`}>{error || notice}</div>}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard icon={<Users />} label="Active now" value={`${activeNow}`} detail={presenceConnected ? "Anonymous realtime presence" : "Presence reconnecting"} />
+        <MetricCard icon={<Users />} label="Active now" value={`${activeNow}`} detail="Anonymous heartbeat · updates about every 5s" />
         <MetricCard icon={<Eye />} label="Total visits" value={bootstrap ? bootstrap.traffic.totalVisits.toLocaleString() : "—"} detail="30-minute browsing sessions" />
         <MetricCard icon={<Activity />} label="Today" value={bootstrap ? bootstrap.traffic.todayVisits.toLocaleString() : "—"} detail={bootstrap ? `${bootstrap.traffic.last15Minutes.toLocaleString()} in the last 15 minutes` : "Loading traffic"} />
         <MetricCard icon={<Radio />} label="Collector" value={latestRun && !latestRun.completedAt ? "RUNNING" : latestRun ? "IDLE" : "WAITING"} detail={`${healthySourceCount} healthy · ${failedSourceCount} failed`} />

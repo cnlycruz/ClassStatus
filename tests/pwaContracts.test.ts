@@ -40,6 +40,10 @@ describe("PWA contracts", () => {
     expect(registration).toContain('"serviceWorker" in navigator');
     expect(registration).toContain('navigator.serviceWorker.register("/sw.js"');
     expect(registration).toContain('updateViaCache: "none"');
+    expect(registration).toContain('process.env.NODE_ENV !== "production"');
+    expect(registration).toContain("navigator.serviceWorker.getRegistrations()");
+    expect(registration).toContain("registration.unregister()");
+    expect(registration).toContain("cacheName.startsWith(STATIC_CACHE_PREFIX)");
     expect(worker).toContain('request.mode === "navigate"');
     expect(worker).toContain('url.origin !== self.location.origin');
     expect(worker).toContain('url.pathname.startsWith("/_next/static/")');
@@ -47,5 +51,15 @@ describe("PWA contracts", () => {
     expect(worker).toContain('"/icons/class-status-favicon-dark.png"');
     expect(worker).not.toContain('"/LOGODARK.png"');
     expect(worker).not.toContain('caches.match(event.request)');
+  });
+
+  it("keeps LAN development assets on HTTP while upgrading production requests", () => {
+    const nextConfig = read("next.config.mjs");
+
+    expect(nextConfig).toContain(
+      'process.env.NODE_ENV === "production" ? "; upgrade-insecure-requests" : ""'
+    );
+    expect(nextConfig).toContain("frame-ancestors 'none'${upgradeInsecureRequests}");
+    expect(nextConfig).not.toContain("frame-ancestors 'none'; upgrade-insecure-requests`");
   });
 });

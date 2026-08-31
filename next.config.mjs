@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const developmentEval = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
+const upgradeInsecureRequests = process.env.NODE_ENV === "production" ? "; upgrade-insecure-requests" : "";
 function supabaseConnectOrigin() {
   try {
     const url = new URL(process.env.SUPABASE_URL || "");
@@ -10,7 +11,7 @@ function supabaseConnectOrigin() {
 }
 const supabaseOrigin = supabaseConnectOrigin();
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: `default-src 'self'; script-src 'self' 'unsafe-inline'${developmentEval}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'${supabaseOrigin}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests` },
+  { key: "Content-Security-Policy", value: `default-src 'self'; script-src 'self' 'unsafe-inline'${developmentEval}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'${supabaseOrigin}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'${upgradeInsecureRequests}` },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

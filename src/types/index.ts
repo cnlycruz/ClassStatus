@@ -46,7 +46,7 @@ export type ConfidenceRating = "high" | "medium" | "low" | "unverified" | "demo"
 export type AdministrativeState = "active" | "pending_removal" | "removed";
 export type PublicationProvenance =
   | { type: "automatic-collector"; publicLabel: string }
-  | { type: "manual-admin"; publicLabel: "Manually verified by ClassStatus Admin" };
+  | { type: "manual-admin"; publicLabel: "Manually verified by Class Status Admin" };
 
 export type SourceOperationalState = "operational" | "under-development";
 export type SourceHealthStatus =

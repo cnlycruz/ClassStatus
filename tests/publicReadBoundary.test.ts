@@ -82,7 +82,7 @@ function manualRecord(id: string, lguId: SuspensionRecord["lguId"]): SuspensionR
     collectorProvenance: undefined,
     publicationProvenance: {
       type: "manual-admin",
-      publicLabel: "Manually verified by ClassStatus Admin",
+      publicLabel: "Manually verified by Class Status Admin",
     },
     manualEvidence: {
       providerPreset: "lgu-official-announcement",

@@ -3,7 +3,7 @@ import { formatManilaTime } from "../utils/philippineTime";
 
 async function main() {
   console.log("=================================================");
-  console.log("🇵🇭 ClassStatus NCR - Automated Collector CLI");
+  console.log("🇵🇭 Class Status NCR - Automated Collector CLI");
   console.log(`Current Manila Time: ${formatManilaTime()}`);
   console.log("=================================================\n");
 

@@ -24,7 +24,7 @@ export async function createPublicationPreview(input: unknown, sessionId: string
   const signature = hmac(`confirmation:${receipt.id}:${sessionId}:${hash}`, getSecurityPepper());
   return {
     normalizedDraft: normalized, confirmationToken: `${receipt.id}.${signature}`, expiresAt: receipt.expiresAt,
-    preview: { heading: `${normalized.targetName} — Classes Suspended`, scope: `${normalized.affectedLevels.join(", ")} · ${normalized.sector}`, reason: normalized.resolvedReason, effectiveDate: normalized.effectiveDate, duration: normalized.resolvedDuration, evidence: normalized.resolvedEvidenceProvider, proofUrl: normalized.normalizedProofUrl, publication: "Manually verified by ClassStatus Admin" },
+    preview: { heading: `${normalized.targetName} — Classes Suspended`, scope: `${normalized.affectedLevels.join(", ")} · ${normalized.sector}`, reason: normalized.resolvedReason, effectiveDate: normalized.effectiveDate, duration: normalized.resolvedDuration, evidence: normalized.resolvedEvidenceProvider, proofUrl: normalized.normalizedProofUrl, publication: "Manually verified by Class Status Admin" },
   };
 }
 
@@ -45,7 +45,7 @@ export async function publishManualSuspension(input: { draft: unknown; confirmat
       announcementSummary: `${normalized.targetName}: ${normalized.resolvedReason}. ${normalized.resolvedDuration}.`,
       source: { id: `manual-${recordIdPart(normalized.resolvedEvidenceProvider)}`, name: normalized.resolvedEvidenceProvider, organization: normalized.resolvedEvidenceProvider, url: normalized.normalizedProofUrl, type: "manual-evidence", verified: true, publishedAt: now },
       confidence: "admin-verified", discoveredAt: now, publishedAt: now, lifecycleState: "validated", isUpcoming: false, isActive: false, isExpired: false,
-      publicationProvenance: { type: "manual-admin", publicLabel: "Manually verified by ClassStatus Admin" }, administrativeState: "active", revision: 1,
+      publicationProvenance: { type: "manual-admin", publicLabel: "Manually verified by Class Status Admin" }, administrativeState: "active", revision: 1,
       manualEvidence: { providerPreset: normalized.evidence.preset, providerName: normalized.resolvedEvidenceProvider, proofUrl: normalized.normalizedProofUrl, ...(normalized.publicNote ? { publicNote: normalized.publicNote } : {}) },
   };
   record.eventKey = noticeEventKey(identityNamespace(), record);

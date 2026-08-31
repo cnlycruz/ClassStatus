@@ -1,5 +1,5 @@
 # =====================================================================
-# ClassStatus NCR — Local Development Starter Script
+# Class Status NCR — Local Development Starter Script
 # Launches the Next.js development server and automatically opens the browser.
 # =====================================================================
 
@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "  🇵🇭 ClassStatus NCR — Starting Local Environment" -ForegroundColor Yellow
+Write-Host "  🇵🇭 Class Status NCR — Starting Local Environment" -ForegroundColor Yellow
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host ""
 

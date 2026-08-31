@@ -56,7 +56,7 @@ export function ResetPasswordForm({ supabaseUrl, supabasePublishableKey }: Reset
       clearRecoveryParameters();
       if (!(await authorizeRecoverySession(client, accessToken, authorizeRecoveryAccessToken))) {
         if (!active) return;
-        setMessage("This recovery link is not authorized for the ClassStatus administrator.");
+        setMessage("This recovery link is not authorized for the Class Status administrator.");
         setState("invalid");
         return;
       }

@@ -5,7 +5,7 @@ import { ResetPasswordForm } from "./ResetPasswordForm";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Reset Admin Password | ClassStatus",
+  title: "Reset Admin Password | Class Status",
   robots: { index: false, follow: false },
 };
 

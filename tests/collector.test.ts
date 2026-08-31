@@ -434,7 +434,7 @@ describe("Tier 3 collector policy and persistence", () => {
       parserOutcome: undefined,
       collectorProvenance: undefined,
       confidence: "admin-verified" as const,
-      publicationProvenance: { type: "manual-admin" as const, publicLabel: "Manually verified by ClassStatus Admin" as const },
+      publicationProvenance: { type: "manual-admin" as const, publicLabel: "Manually verified by Class Status Admin" as const },
       manualEvidence: { providerPreset: "lgu-official-announcement", providerName: "City of Manila", proofUrl: "https://manila.example/manual" },
     };
     localStateStore.mutateState((state) => state.records.unshift(manual));

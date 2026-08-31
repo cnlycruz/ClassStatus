@@ -22,7 +22,7 @@ export default function AboutPage() {
         {/* Header */}
         <div className="space-y-4 text-center max-w-2xl mx-auto">
           <div className="inline-flex items-center gap-2 rounded-full bg-blue-100 dark:bg-blue-950 px-3.5 py-1 text-xs font-bold text-blue-700 dark:text-blue-300">
-            <span>🇵🇭 About ClassStatus NCR</span>
+            <span>🇵🇭 About Class Status NCR</span>
           </div>
           <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-slate-900 dark:text-white">
             Answering &ldquo;May Pasok Ba?&rdquo; with Speed & Truth
@@ -36,13 +36,13 @@ export default function AboutPage() {
         <div className="space-y-4 bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-blue-500" />
-            <span>Why ClassStatus NCR Exists</span>
+            <span>Why Class Status NCR Exists</span>
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
             During inclement weather in the Philippines, suspension announcements are fragmented across dozens of individual mayor Facebook pages, news feeds, DepEd division memos, and social media threads. Students frequently face misinformation, outdated screenshots, or confusion between morning and afternoon shifts.
           </p>
           <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            <strong>ClassStatus NCR</strong> centralizes all 17 Metro Manila LGUs into a single interactive map. By combining automated NLP ingestion with authoritative source verification, students get unambiguous answers in seconds.
+            <strong>Class Status NCR</strong> centralizes all 17 Metro Manila LGUs into a single interactive map. By combining automated NLP ingestion with authoritative source verification, students get unambiguous answers in seconds.
           </p>
         </div>
 
@@ -89,7 +89,7 @@ export default function AboutPage() {
                 How does Caloocan North and South work?
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                Caloocan is geographically separated into North Caloocan (adjoining QC and Bulacan) and South Caloocan (adjoining Manila and Malabon). ClassStatus NCR renders both discrete polygons with accurate borders while maintaining unified citywide LGU status.
+                Caloocan is geographically separated into North Caloocan (adjoining QC and Bulacan) and South Caloocan (adjoining Manila and Malabon). Class Status NCR renders both discrete polygons with accurate borders while maintaining unified citywide LGU status.
               </p>
             </div>
 
@@ -120,7 +120,7 @@ export default function AboutPage() {
             <span>Important Legal Disclaimer</span>
           </div>
           <p>
-            ClassStatus NCR is an independent public information platform aggregating public advisories. Official announcements published directly by respective Local Government Units (Mayors/PIOs), the Department of Education (DepEd), the Commission on Higher Education (CHED), and individual school administrations remain the sole legal authority on class attendance.
+            Class Status NCR is an independent public information platform aggregating public advisories. Official announcements published directly by respective Local Government Units (Mayors/PIOs), the Department of Education (DepEd), the Commission on Higher Education (CHED), and individual school administrations remain the sole legal authority on class attendance.
           </p>
         </div>
       </main>

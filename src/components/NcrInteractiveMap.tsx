@@ -2,7 +2,9 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { NCR_GEO_PATHS, GeoPathItem } from "@/data/ncrGeoData";
+import { NCR_MAP_LABEL_PLACEMENTS } from "@/data/ncrMapPresentation";
 import { LGUId, LGUInfo, SuspensionStatus, SuspensionRecord } from "@/types";
+import { getStatusPresentation } from "@/lib/statusPresentation";
 import {
   MapPoint,
   NcrMapView,
@@ -34,15 +36,6 @@ interface NcrInteractiveMapProps {
   onClearSelection: () => void;
   statusFilter?: string | null;
 }
-
-type MapLabelPlacement = {
-  x: number;
-  y: number;
-  fontSize: number;
-  textAnchor: "start" | "middle" | "end";
-  text?: string;
-  lines?: string[];
-};
 
 type LabelNode = {
   element: SVGGElement;
@@ -85,31 +78,6 @@ function createMapGesture(): MapGesture {
     hasPinched: false,
   };
 }
-
-// Visual interior anchors, chosen from each path's largest usable interior
-// area and then optically centered for the rendered overview. Keeping this
-// separate from the geographic data prevents label refinement from altering
-// the underlying LGU boundaries.
-const MAP_LABEL_PLACEMENTS: Record<string, MapLabelPlacement> = {
-  manila: { x: 344, y: 449, fontSize: 16, textAnchor: "middle", text: "Manila" },
-  mandaluyong: { x: 439, y: 476, fontSize: 12, textAnchor: "middle" },
-  marikina: { x: 588, y: 323, fontSize: 16, textAnchor: "middle" },
-  pasig: { x: 522, y: 493, fontSize: 16, textAnchor: "middle" },
-  "quezon-city": { x: 468, y: 278, fontSize: 17, textAnchor: "middle" },
-  "san-juan": { x: 422, y: 430, fontSize: 12, textAnchor: "middle" },
-  "caloocan-north": { x: 456, y: 108, fontSize: 14, textAnchor: "middle", lines: ["Caloocan", "(North)"] },
-  "caloocan-south": { x: 307, y: 332, fontSize: 11, textAnchor: "middle", lines: ["Caloocan", "(South)"] },
-  malabon: { x: 258, y: 272, fontSize: 12, textAnchor: "middle" },
-  navotas: { x: 185, y: 225, fontSize: 11, textAnchor: "middle" },
-  valenzuela: { x: 317, y: 226, fontSize: 16, textAnchor: "middle" },
-  "las-pinas": { x: 361, y: 780, fontSize: 14, textAnchor: "middle" },
-  makati: { x: 411, y: 534, fontSize: 14, textAnchor: "middle" },
-  muntinlupa: { x: 422, y: 869, fontSize: 14, textAnchor: "middle" },
-  paranaque: { x: 403, y: 686, fontSize: 14, textAnchor: "middle" },
-  pasay: { x: 390, y: 605, fontSize: 13, textAnchor: "middle" },
-  taguig: { x: 470, y: 611, fontSize: 16, textAnchor: "middle" },
-  pateros: { x: 503, y: 546, fontSize: 10, textAnchor: "middle" },
-};
 
 export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
   lgus,
@@ -376,13 +344,13 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
 
     switch (status) {
       case "classes-suspended":
-        return isSelected ? "#DC2626" : isHovered ? "#EF4444" : "#F87171";
+        return isSelected ? "#DC2626" : isHovered ? "#EF4444" : getStatusPresentation(status).color;
       case "partial-suspension":
-        return isSelected ? "#D97706" : isHovered ? "#F59E0B" : "#FBBF24";
+        return isSelected ? "#D97706" : isHovered ? "#F59E0B" : getStatusPresentation(status).color;
       case "classes-continue":
-        return isSelected ? "#059669" : isHovered ? "#10B981" : "#34D399";
+        return isSelected ? "#059669" : isHovered ? "#10B981" : getStatusPresentation(status).color;
       default:
-        return isSelected ? "#475569" : isHovered ? "#64748B" : "#94A3B8";
+        return isSelected ? "#475569" : isHovered ? "#64748B" : getStatusPresentation(status).color;
     }
   };
 
@@ -418,7 +386,7 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
       >
         <button
           onClick={() => handleZoom(0.3)}
-          className="map-touch-control flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-xl text-slate-200 hover:bg-slate-800 active:bg-slate-700 transition-colors"
+          className="map-touch-control flex h-11 w-11 items-center justify-center rounded-xl text-slate-200 hover:bg-slate-800 active:bg-slate-700 transition-colors"
           title="Zoom In"
           aria-label="Zoom In"
         >
@@ -426,7 +394,7 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
         </button>
         <button
           onClick={() => handleZoom(-0.3)}
-          className="map-touch-control flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-xl text-slate-200 hover:bg-slate-800 active:bg-slate-700 transition-colors"
+          className="map-touch-control flex h-11 w-11 items-center justify-center rounded-xl text-slate-200 hover:bg-slate-800 active:bg-slate-700 transition-colors"
           title="Zoom Out"
           aria-label="Zoom Out"
         >
@@ -435,7 +403,7 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
         <div className="my-0.5 h-px bg-slate-800" />
         <button
           onClick={handleResetZoom}
-          className="map-touch-control flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-xl text-slate-200 hover:bg-slate-800 active:bg-slate-700 transition-colors"
+          className="map-touch-control flex h-11 w-11 items-center justify-center rounded-xl text-slate-200 hover:bg-slate-800 active:bg-slate-700 transition-colors"
           title="Reset Map View"
           aria-label="Reset Map View"
         >
@@ -556,7 +524,7 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
             const lguData = lguMap.get(pathItem.lguId);
             const isSelected = selectedLguId === pathItem.lguId;
             const isHovered = hoveredLguId === pathItem.lguId;
-            const placement = MAP_LABEL_PLACEMENTS[pathItem.id] || {
+            const placement = NCR_MAP_LABEL_PLACEMENTS[pathItem.id] || {
               x: pathItem.labelX,
               y: pathItem.labelY,
               fontSize: 14,

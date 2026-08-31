@@ -10,6 +10,13 @@ describe("theme-aware browser branding", () => {
     expect(navbar).toContain('theme === "dark" ? "/LOGODARK.png" : "/LOGO.PNG"');
   });
 
+  it("uses the original light logo in the server-rendered NCR share card", () => {
+    const route = read("src", "app", "api", "share", "ncr", "route.ts");
+    expect(route).toContain('readFile(join(process.cwd(), "public", "LOGO.PNG"))');
+    expect(route).not.toContain('readFile(join(process.cwd(), "public", "LOGODARK.png"))');
+    expect(route).not.toContain('readFile(join(process.cwd(), "public", "icons", "class-status-icon-192.png"))');
+  });
+
   it("updates one metadata favicon link for both explicit theme assets", () => {
     const favicon = read("src", "components", "ThemeFavicon.tsx");
     expect(favicon).toContain('const LIGHT_FAVICON = "/icons/class-status-favicon.png"');

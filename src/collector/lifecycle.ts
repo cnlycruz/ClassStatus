@@ -115,7 +115,7 @@ function getCurrentManilaTimeHM(now: Date = getNow()): string {
  */
 export function deriveLGUStatus(
   lguId: LGUId,
-  records: SuspensionRecord[],
+  records: readonly SuspensionRecord[],
   currentManilaDate: string = getManilaDateString(getNow())
 ): {
   status: SuspensionStatus;
@@ -213,7 +213,7 @@ export function suspensionAppliesToSchool(record: SuspensionRecord, school: Scho
   return sectorMatches && levelMatches;
 }
 
-export function deriveSchoolStatus(school: SchoolInfo, records: SuspensionRecord[], currentManilaDate: string = getManilaDateString(getNow())) {
+export function deriveSchoolStatus(school: SchoolInfo, records: readonly SuspensionRecord[], currentManilaDate: string = getManilaDateString(getNow())) {
   const evaluated = records.filter((record) => suspensionAppliesToSchool(record, school)).map((record) => ({ ...record, ...(() => {
     const lifecycle = evaluateSuspensionLifecycle(record, currentManilaDate);
     return { lifecycleState: lifecycle.state, isActive: lifecycle.isActive, isUpcoming: lifecycle.isUpcoming, isExpired: lifecycle.isExpired };

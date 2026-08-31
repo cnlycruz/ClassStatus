@@ -102,7 +102,7 @@
   animation: pulse-subtle 2s infinite ease-in-out;
 }
 
-/* Keep the map dashboard within short desktop viewports without changing component styling. */
+/* Keep outer spacing compact on shorter desktops without resizing the map region. */
 @media (min-width: 1024px) and (max-height: 900px) {
   .dashboard-main {
     padding-top: 1rem;
@@ -114,55 +114,10 @@
   }
 }
 
-@media (min-width: 1024px) and (max-height: 800px) {
-  .dashboard-main {
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
-  }
-
-  .dashboard-main > .dashboard-map-region {
-    margin-top: 0.75rem;
-    height: min(31.5rem, calc(100dvh - 13rem));
-    min-height: 0;
-  }
-}
-
 /* Keep the map useful in phone landscape without forcing an oversized canvas below the fold. */
 @media (max-width: 1023px) and (max-height: 540px) and (orientation: landscape) {
   .ncr-map-canvas {
     height: min(84dvh, 25rem);
     min-height: 20rem;
-  }
-}
-
-@media (min-width: 1024px) and (max-height: 800px) {
-  .lgu-detail-header,
-  .lgu-detail-body,
-  .lgu-detail-footer {
-    padding: 0.75rem;
-  }
-
-  .lgu-detail-status {
-    margin-top: 0.5rem;
-    padding: 0.75rem;
-  }
-
-  .lgu-detail-body {
-    row-gap: 0.75rem;
-    overflow-y: auto;
-  }
-
-  /* On short desktops, keep all advisory details reachable through one body scroll. */
-  .lgu-detail-schools-section {
-    flex: 0 0 auto;
-    min-height: auto;
-  }
-
-  .lgu-detail-schools {
-    overflow: visible;
-  }
-
-  .lgu-detail-footer {
-    gap: 0.5rem;
   }
 }

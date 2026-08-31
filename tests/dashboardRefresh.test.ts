@@ -1,9 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createDashboardRenderFingerprint,
   DASHBOARD_REFRESH_INTERVAL_MS,
   startVisibilityAwareDashboardRefresh,
   type VisibilityTarget,
 } from "@/lib/dashboardRefresh";
+
+const dashboardPayload = {
+  summary: {
+    updatedAt: "2026-09-01T00:00:00.000Z",
+    philippineTimeFormatted: "8:00:00 AM PHT",
+    todayDateFormatted: "September 1, 2026",
+    suspendedCount: 2,
+    overallStatusHeadline: "Active Class Suspensions in 2 LGUs across Metro Manila",
+  },
+  lgus: [{ id: "manila", status: "classes-suspended" }],
+};
 
 class FakeVisibilityTarget implements VisibilityTarget {
   public visibilityState = "visible";
@@ -52,5 +64,40 @@ describe("visibility-aware dashboard refresh", () => {
     target.setVisibility("visible");
     expect(refresh).toHaveBeenCalledOnce();
     stop();
+  });
+});
+
+describe("dashboard render fingerprint", () => {
+  it("ignores only non-rendered request clock fields", () => {
+    const nextPoll = {
+      ...dashboardPayload,
+      summary: {
+        ...dashboardPayload.summary,
+        updatedAt: "2026-09-01T00:00:30.000Z",
+        philippineTimeFormatted: "8:00:30 AM PHT",
+      },
+    };
+
+    expect(createDashboardRenderFingerprint(nextPoll)).toBe(
+      createDashboardRenderFingerprint(dashboardPayload),
+    );
+  });
+
+  it("changes when rendered summary or LGU data changes", () => {
+    const changedCount = {
+      ...dashboardPayload,
+      summary: { ...dashboardPayload.summary, suspendedCount: 3 },
+    };
+    const changedLgu = {
+      ...dashboardPayload,
+      lgus: [{ id: "manila", status: "classes-continue" }],
+    };
+
+    expect(createDashboardRenderFingerprint(changedCount)).not.toBe(
+      createDashboardRenderFingerprint(dashboardPayload),
+    );
+    expect(createDashboardRenderFingerprint(changedLgu)).not.toBe(
+      createDashboardRenderFingerprint(dashboardPayload),
+    );
   });
 });

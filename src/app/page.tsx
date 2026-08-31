@@ -9,7 +9,10 @@ import { NcrInteractiveMap } from "@/components/NcrInteractiveMap";
 import { ALL_LGU_IDS, NCR_LGUS } from "@/data/lgus";
 import { LGUId, LGUInfo, MayPasokSummary, SuspensionRecord, SuspensionStatus } from "@/types";
 import { getInitialDashboardSelection } from "@/lib/dashboardSelection";
-import { startVisibilityAwareDashboardRefresh } from "@/lib/dashboardRefresh";
+import {
+  createDashboardRenderFingerprint,
+  startVisibilityAwareDashboardRefresh,
+} from "@/lib/dashboardRefresh";
 import { MapPin, Compass } from "lucide-react";
 
 const LguDetailPanel = dynamic(() => import("@/components/LguDetailPanel").then((module) => module.LguDetailPanel));
@@ -21,6 +24,7 @@ export default function HomePage() {
   const hasDashboardData = useRef(false);
   const activeDashboardRequest = useRef<Promise<void> | null>(null);
   const dashboardAbortController = useRef<AbortController | null>(null);
+  const dashboardRenderFingerprint = useRef<string | null>(null);
   const [lgus, setLgus] = useState<
     (LGUInfo & {
       status: SuspensionStatus;
@@ -46,6 +50,13 @@ export default function HomePage() {
         const res = await fetch("/api/lgus", { cache: "no-store", signal: controller.signal });
         if (!res.ok) throw new Error("DASHBOARD_REFRESH_FAILED");
         const json = await res.json();
+        const nextFingerprint = createDashboardRenderFingerprint(json);
+        if (dashboardRenderFingerprint.current === nextFingerprint) {
+          hasDashboardData.current = true;
+          return;
+        }
+
+        dashboardRenderFingerprint.current = nextFingerprint;
         setLgus(json.lgus);
         setSummary(json.summary);
         hasDashboardData.current = true;
@@ -153,7 +164,7 @@ export default function HomePage() {
 
         {/* Main Content Area: Map + Detail Panel or List View */}
         {viewMode === "map" ? (
-          <div className="dashboard-map-region grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-stretch lg:gap-5 lg:min-h-[clamp(34rem,calc(100dvh-20rem),46rem)]">
+          <div className="dashboard-map-region grid grid-cols-1 gap-5 lg:h-[46rem] lg:grid-cols-12 lg:items-stretch lg:gap-5">
             {/* Interactive Map Column */}
             <div className="lg:col-span-8 flex flex-col gap-2.5 lg:h-full lg:min-h-0">
               <div className="flex items-center px-1 text-xs text-slate-500 dark:text-slate-400">

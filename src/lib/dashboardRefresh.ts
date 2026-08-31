@@ -1,5 +1,26 @@
 export const DASHBOARD_REFRESH_INTERVAL_MS = 30_000;
 
+export function createDashboardRenderFingerprint<
+  Summary extends {
+    updatedAt: string;
+    philippineTimeFormatted: string;
+  },
+>(payload: {
+  summary: Summary;
+  lgus: unknown;
+}): string {
+  const {
+    updatedAt: _updatedAt,
+    philippineTimeFormatted: _philippineTimeFormatted,
+    ...renderedSummary
+  } = payload.summary;
+
+  return JSON.stringify({
+    summary: renderedSummary,
+    lgus: payload.lgus,
+  });
+}
+
 export interface VisibilityTarget {
   readonly visibilityState: string;
   addEventListener(type: "visibilitychange", listener: () => void): void;

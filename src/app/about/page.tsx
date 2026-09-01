@@ -25,10 +25,10 @@ export default function AboutPage() {
             <span>🇵🇭 About Class Status NCR</span>
           </div>
           <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-slate-900 dark:text-white">
-            Answering &ldquo;May Pasok Ba?&rdquo; with Speed & Truth
+            &ldquo;May pasok ba?&rdquo; Know Before You Go.
           </h1>
           <p className="text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-            Built for millions of students, parents, and teachers across Metro Manila who need instantaneous, trustworthy, and verified class suspension information during typhoons, monsoon rains, and weather disturbances.
+            ClassStatus NCR helps students quickly check class suspensions across Metro Manila, so you can know the latest status before leaving home. Every update is backed by trusted sources you can check yourself.
           </p>
         </div>
 

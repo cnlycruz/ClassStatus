@@ -12,7 +12,8 @@ import {
   hasNcrMapGestureMoved,
   initialNcrMapView,
   ncrLabelAnchorTransform,
-  ncrMapTransform,
+  NCR_MAP_BASE_VIEWBOX,
+  ncrMapSvgTransform,
   ncrPinchView,
   shouldActivateNcrMapTarget,
 } from "@/lib/ncrMapInteraction";
@@ -88,8 +89,8 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
 }: NcrInteractiveMapProps) {
   const [hoveredLguId, setHoveredLguId] = useState<LGUId | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const transformLayerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const mapGroupRef = useRef<SVGGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const labelNodesRef = useRef(new Map<string, LabelNode>());
   const labelRefCallbacksRef = useRef(new Map<string, (element: SVGGElement | null) => void>());
@@ -97,7 +98,6 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
   const pendingViewRef = useRef<NcrMapView>(viewRef.current);
   const renderedLabelScaleRef = useRef<number | null>(null);
   const viewFrameRef = useRef<number | null>(null);
-  const transformSettleTimerRef = useRef<number | null>(null);
   const tooltipFrameRef = useRef<number | null>(null);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const gestureRef = useRef<MapGesture>(createMapGesture());
@@ -124,39 +124,41 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
     return callback;
   }, []);
 
+  const applyLabelScale = useCallback((scale: number) => {
+    if (renderedLabelScaleRef.current === scale) return;
+
+    labelNodesRef.current.forEach(({ element, anchor }) => {
+      element.setAttribute("transform", ncrLabelAnchorTransform(anchor, scale));
+    });
+    renderedLabelScaleRef.current = scale;
+  }, []);
+
   const applyView = useCallback((view: NcrMapView) => {
-    const transformLayer = transformLayerRef.current;
-    if (transformLayer) transformLayer.style.transform = ncrMapTransform(view);
+    const container = containerRef.current;
+    const mapGroup = mapGroupRef.current;
+    if (!container || !mapGroup) return;
 
-    if (renderedLabelScaleRef.current !== view.scale) {
-      labelNodesRef.current.forEach(({ element, anchor }) => {
-        element.setAttribute("transform", ncrLabelAnchorTransform(anchor, view.scale));
-      });
-      renderedLabelScaleRef.current = view.scale;
-    }
-  }, []);
+    mapGroup.setAttribute(
+      "transform",
+      ncrMapSvgTransform(view, {
+        width: container.clientWidth,
+        height: container.clientHeight,
+      })
+    );
 
-  const markTransformActive = useCallback(() => {
-    const transformLayer = transformLayerRef.current;
-    if (transformLayer) transformLayer.style.willChange = "transform";
-    if (transformSettleTimerRef.current !== null) window.clearTimeout(transformSettleTimerRef.current);
-    transformSettleTimerRef.current = window.setTimeout(() => {
-      transformSettleTimerRef.current = null;
-      if (transformLayerRef.current) transformLayerRef.current.style.willChange = "auto";
-    }, 140);
-  }, []);
+    applyLabelScale(view.scale);
+  }, [applyLabelScale]);
 
   const scheduleView = useCallback((nextView: NcrMapView) => {
     viewRef.current = nextView;
     pendingViewRef.current = nextView;
-    markTransformActive();
     if (viewFrameRef.current !== null) return;
 
     viewFrameRef.current = requestAnimationFrame(() => {
       viewFrameRef.current = null;
       applyView(pendingViewRef.current);
     });
-  }, [applyView, markTransformActive]);
+  }, [applyView]);
 
   const handleZoom = useCallback((delta: number) => {
     const current = viewRef.current;
@@ -171,15 +173,24 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
     const initialView = initialNcrMapView();
     viewRef.current = initialView;
     pendingViewRef.current = initialView;
-    markTransformActive();
     applyView(initialView);
-  }, [applyView, markTransformActive]);
+  }, [applyView]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      applyView(viewRef.current);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [applyView]);
 
   useEffect(() => {
     return () => {
       if (viewFrameRef.current !== null) cancelAnimationFrame(viewFrameRef.current);
       if (tooltipFrameRef.current !== null) cancelAnimationFrame(tooltipFrameRef.current);
-      if (transformSettleTimerRef.current !== null) window.clearTimeout(transformSettleTimerRef.current);
     };
   }, []);
 
@@ -324,8 +335,8 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
       shouldActivateNcrMapTarget(gesture) &&
       !target.closest("[data-map-overlay]") &&
       (target === containerRef.current ||
-        target === transformLayerRef.current ||
         target === svgRef.current ||
+        target === mapGroupRef.current ||
         Boolean(svgRef.current?.contains(target))) &&
       !target.closest(".ncr-map-lgu") &&
       !target.closest("#ncr-labels")
@@ -359,7 +370,7 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
   return (
     <div
       ref={containerRef}
-      className="ncr-map-canvas relative w-full h-[58dvh] min-h-[420px] sm:h-[min(620px,65dvh)] lg:h-auto lg:flex-1 lg:min-h-0 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden select-none touch-none cursor-grab active:cursor-grabbing"
+      className="ncr-map-canvas relative h-[60dvh] min-h-[440px] w-full sm:h-[min(620px,65dvh)] lg:h-auto lg:min-h-0 lg:flex-1 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden select-none touch-none cursor-grab active:cursor-grabbing"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={finishPointer}
@@ -443,28 +454,21 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
         </div>
       </div>
 
-      {/* One compositor-friendly layer owns viewport movement; SVG geometry stays unchanged. */}
-      <div
-        ref={transformLayerRef}
-        className="absolute inset-0"
-        style={{
-          transformOrigin: "center center",
-        }}
+      {/* SVG-native movement preserves complete vector rendering during gestures. */}
+      <svg
+        ref={svgRef}
+        viewBox={`${NCR_MAP_BASE_VIEWBOX.x} ${NCR_MAP_BASE_VIEWBOX.y} ${NCR_MAP_BASE_VIEWBOX.width} ${NCR_MAP_BASE_VIEWBOX.height}`}
+        className="absolute inset-0 h-full w-full"
       >
-        {/* SVG Canvas with Accurate Geographic PSGC Municipal Borders */}
-        <svg
-          ref={svgRef}
-          viewBox="0 0 800 1000"
-          className="w-full h-full"
-        >
         <defs>
           <filter id="lgu-selected-glow" x="-20%" y="-20%" width="140%" height="140%">
             <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="#60A5FA" floodOpacity="0.8" />
           </filter>
         </defs>
 
-        {/* LGU Polygons */}
-        <g id="ncr-polygons">
+        <g ref={mapGroupRef} id="ncr-map-content" transform="translate(0 0) scale(1)">
+          {/* LGU Polygons */}
+          <g id="ncr-polygons">
           {NCR_GEO_PATHS.map((pathItem: GeoPathItem) => {
             const lguData = lguMap.get(pathItem.lguId);
             const status = lguData?.status || "awaiting-information";
@@ -516,10 +520,10 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
               />
             );
           })}
-        </g>
+          </g>
 
-        {/* LGU Labels & High-Contrast City Name Tags */}
-        <g id="ncr-labels" className="pointer-events-auto">
+          {/* LGU Labels & High-Contrast City Name Tags */}
+          <g id="ncr-labels" className="pointer-events-auto">
           {NCR_GEO_PATHS.map((pathItem) => {
             const lguData = lguMap.get(pathItem.lguId);
             const isSelected = selectedLguId === pathItem.lguId;
@@ -559,6 +563,7 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
                     strokeWidth={Math.min(Math.max(placement.fontSize * 0.18, 1.4), 2.3)}
                     strokeLinejoin="round"
                     paintOrder="stroke"
+                    textRendering="geometricPrecision"
                     className={`select-none font-bold tracking-tight transition-colors ${
                       isSelected ? "fill-blue-200" : isHovered ? "fill-white" : "fill-slate-100"
                     }`}
@@ -589,9 +594,9 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
               </g>
             );
           })}
+          </g>
         </g>
-        </svg>
-      </div>
+      </svg>
 
       {/* Dynamic Hover Tooltip (Desktop) */}
       {hoveredLguData && (

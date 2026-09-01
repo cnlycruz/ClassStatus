@@ -5,10 +5,11 @@ import {
   clampNcrMapScale,
   hasNcrMapGestureMoved,
   initialNcrMapView,
+  NCR_MAP_BASE_VIEWBOX,
   ncrLabelAnchorTransform,
   ncrLabelCompensation,
   ncrLabelEffectiveScale,
-  ncrMapTransform,
+  ncrMapSvgTransform,
   ncrPinchView,
   scalePointAroundAnchor,
   shouldActivateNcrMapTarget,
@@ -25,9 +26,34 @@ describe("NCR map viewport interaction", () => {
     expect(clampNcrMapScale(2)).toBe(2);
     expect(clampNcrMapScale(8)).toBe(4);
     expect(initialNcrMapView()).toEqual({ scale: 1, pan: { x: 0, y: 0 } });
-    expect(ncrMapTransform({ scale: 2, pan: { x: 12, y: -8 } })).toBe(
-      "translate3d(12px, -8px, 0) scale(2)"
+    expect(ncrMapSvgTransform(initialNcrMapView(), { width: 360, height: 515 })).toBe(
+      "translate(0 0) scale(1)"
     );
+  });
+
+  it("converts pixel pan and centered zoom into a native SVG transform", () => {
+    expect(ncrMapSvgTransform(
+      { scale: 2, pan: { x: 24, y: -18 } },
+      { width: 360, height: 515 }
+    )).toBe("translate(-350.93333333333334 -536.8) scale(2)");
+  });
+
+  it("uses the modestly taller mobile card and centered default framing", () => {
+    expect(componentSource).toContain("h-[60dvh] min-h-[440px]");
+    expect(componentSource).not.toContain("h-[58dvh] min-h-[420px]");
+    expect(componentSource).toContain("viewBox={`${NCR_MAP_BASE_VIEWBOX.x}");
+    expect(NCR_MAP_BASE_VIEWBOX).toEqual({ x: 32, y: 0, width: 736, height: 1000 });
+  });
+
+  it("keeps native SVG transforms deterministic across repeated updates and reset", () => {
+    const viewport = { width: 360, height: 515 };
+    const view = { scale: 2, pan: { x: 24, y: -18 } };
+    const expected = ncrMapSvgTransform(view, viewport);
+
+    for (let cycle = 0; cycle < 20; cycle += 1) {
+      expect(ncrMapSvgTransform(view, viewport)).toBe(expected);
+      expect(ncrMapSvgTransform(initialNcrMapView(), viewport)).toBe("translate(0 0) scale(1)");
+    }
   });
 
   it("uses soft label compensation with the approved effective sizes", () => {
@@ -89,8 +115,13 @@ describe("NCR map viewport interaction", () => {
     expect(componentSource).not.toContain("transition-transform");
     expect(componentSource).not.toContain("duration-75");
     expect(componentSource).not.toMatch(/\bsetPan\b|\bsetScale\b/);
-    expect(componentSource).toContain("transformLayer.style.transform = ncrMapTransform(view)");
-    expect(componentSource).toContain("renderedLabelScaleRef.current !== view.scale");
+    expect(componentSource).not.toContain("translate3d");
+    expect(componentSource).not.toContain("transformLayerRef");
+    expect(componentSource).not.toContain("willChange");
+    expect(componentSource).toContain("mapGroup.setAttribute(");
+    expect(componentSource).toContain("ncrMapSvgTransform(view");
+    expect(componentSource).toContain('textRendering="geometricPrecision"');
+    expect(componentSource).toContain("renderedLabelScaleRef.current === scale");
     expect(componentSource).toContain("requestAnimationFrame");
     expect(componentSource).toContain("setPointerCapture");
     expect(componentSource).toContain("onPointerCancel");

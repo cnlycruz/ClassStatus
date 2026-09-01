@@ -2,8 +2,16 @@ export const MIN_NCR_MAP_SCALE = 0.7;
 export const MAX_NCR_MAP_SCALE = 4;
 export const NCR_MAP_DRAG_THRESHOLD = 8;
 
+export const NCR_MAP_BASE_VIEWBOX = {
+  x: 32,
+  y: 0,
+  width: 736,
+  height: 1000,
+} as const;
+
 export type MapPoint = { x: number; y: number };
 export type NcrMapView = { scale: number; pan: MapPoint };
+export type NcrMapViewport = { width: number; height: number };
 
 export function initialNcrMapView(): NcrMapView {
   return { scale: 1, pan: { x: 0, y: 0 } };
@@ -34,8 +42,19 @@ export function scalePointAroundAnchor(point: MapPoint, anchor: MapPoint, scale:
   };
 }
 
-export function ncrMapTransform(view: NcrMapView): string {
-  return `translate3d(${view.pan.x}px, ${view.pan.y}px, 0) scale(${view.scale})`;
+export function ncrMapSvgTransform(view: NcrMapView, viewport: NcrMapViewport): string {
+  const scale = clampNcrMapScale(view.scale);
+  const base = NCR_MAP_BASE_VIEWBOX;
+  const viewportScale = Math.min(viewport.width / base.width, viewport.height / base.height);
+
+  if (!Number.isFinite(viewportScale) || viewportScale <= 0) return "translate(0 0) scale(1)";
+
+  const centerX = base.x + base.width / 2;
+  const centerY = base.y + base.height / 2;
+  const translateX = (1 - scale) * centerX + view.pan.x / viewportScale;
+  const translateY = (1 - scale) * centerY + view.pan.y / viewportScale;
+
+  return `translate(${translateX} ${translateY}) scale(${scale})`;
 }
 
 export function hasNcrMapGestureMoved(start: MapPoint, current: MapPoint): boolean {

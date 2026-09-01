@@ -19,6 +19,10 @@ const LguDetailPanel = dynamic(() => import("@/components/LguDetailPanel").then(
 const ListView = dynamic(() => import("@/components/ListView").then((module) => module.ListView));
 const SchoolFinderModal = dynamic(() => import("@/components/SchoolFinderModal").then((module) => module.SchoolFinderModal), { ssr: false });
 
+function reportLguView(id: LGUId | null) {
+  window.dispatchEvent(new CustomEvent("classstatus:lgu-view", { detail: { lguId: id } }));
+}
+
 export default function HomePage() {
   const initialSelectionApplied = useRef(false);
   const hasDashboardData = useRef(false);
@@ -63,7 +67,6 @@ export default function HomePage() {
       } catch (error) {
         if (controller.signal.aborted || hasDashboardData.current) return;
 
-        // Safe initial fallback: a temporary failure never replaces already-visible data.
         const computedLgus = ALL_LGU_IDS.map((id) => ({
           ...NCR_LGUS[id],
           status: "awaiting-information" as const,
@@ -101,7 +104,6 @@ export default function HomePage() {
   useEffect(() => {
     void loadData();
 
-    // Keyboard shortcut '/' or 'Ctrl+K' for school search
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "/" && (e.target as HTMLElement).tagName !== "INPUT") {
         e.preventDefault();
@@ -128,22 +130,32 @@ export default function HomePage() {
   useEffect(() => {
     if (initialSelectionApplied.current) return;
     initialSelectionApplied.current = true;
-
     const lguId = getInitialDashboardSelection(new URLSearchParams(window.location.search).get("lgu"));
-    if (lguId) setSelectedLguId(lguId);
+    if (lguId) {
+      setSelectedLguId(lguId);
+      reportLguView(lguId);
+    }
   }, []);
 
   const selectedLgu = lgus.find((l) => l.id === selectedLguId) || null;
   const openSchoolSearch = useCallback(() => setIsSchoolSearchOpen(true), []);
   const closeSchoolSearch = useCallback(() => setIsSchoolSearchOpen(false), []);
-  const selectLgu = useCallback((id: LGUId) => setSelectedLguId(id), []);
-  const clearSelection = useCallback(() => setSelectedLguId(null), []);
+  const selectLgu = useCallback((id: LGUId) => {
+    setSelectedLguId(id);
+    reportLguView(id);
+  }, []);
+  const clearSelection = useCallback(() => {
+    setSelectedLguId(null);
+    reportLguView(null);
+  }, []);
   const selectLguFromList = useCallback((id: LGUId) => {
     setSelectedLguId(id);
+    reportLguView(id);
     setViewMode("map");
   }, []);
   const selectLguFromSchool = useCallback((id: string) => {
     setSelectedLguId(id as LGUId);
+    reportLguView(id as LGUId);
     setViewMode("map");
   }, []);
 
@@ -152,7 +164,6 @@ export default function HomePage() {
       <Navbar onOpenSchoolSearch={openSchoolSearch} />
 
       <main className="dashboard-main flex-1 mx-auto w-full max-w-7xl 2xl:max-w-[min(90vw,1920px)] px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-5 space-y-5 sm:space-y-6">
-        {/* Status Announcement Hero */}
         <StatusHero
           summary={summary}
           activeFilter={activeFilter}
@@ -162,10 +173,8 @@ export default function HomePage() {
           onRefresh={loadData}
         />
 
-        {/* Main Content Area: Map + Detail Panel or List View */}
         {viewMode === "map" ? (
           <div className="dashboard-map-region grid grid-cols-1 gap-5 lg:h-[46rem] lg:grid-cols-12 lg:items-stretch lg:gap-5">
-            {/* Interactive Map Column */}
             <div className="lg:col-span-8 flex flex-col gap-2.5 lg:h-full lg:min-h-0">
               <div className="flex items-center px-1 text-xs text-slate-500 dark:text-slate-400">
                 <span className="flex items-center gap-1.5 font-medium">
@@ -184,30 +193,21 @@ export default function HomePage() {
               />
             </div>
 
-            {/* Selected LGU Detail Panel Column (Desktop Sidebar / Mobile Slide-up Bottom Drawer) */}
             <div className="lg:col-span-4 lg:h-full lg:min-h-0">
               {selectedLgu ? (
-                <LguDetailPanel
-                  lgu={selectedLgu}
-                  onClose={clearSelection}
-                />
+                <LguDetailPanel lgu={selectedLgu} onClose={clearSelection} />
               ) : (
                 <div className="hidden lg:flex h-full rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 p-6 flex-col items-center justify-center text-center text-slate-400 space-y-3">
                   <Compass className="h-10 w-10 text-slate-300 dark:text-slate-700 animate-pulse" />
                   <div className="space-y-1">
-                    <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">
-                      Select an LGU on the map
-                    </p>
-                    <p className="text-xs max-w-xs text-slate-500">
-                      Click any city or municipality to view official suspension advisories, affected grade levels, and verified sources.
-                    </p>
+                    <p className="font-bold text-slate-700 dark:text-slate-200 text-sm">Select an LGU on the map</p>
+                    <p className="text-xs max-w-xs text-slate-500">Click any city or municipality to view official suspension advisories, affected grade levels, and verified sources.</p>
                   </div>
                 </div>
               )}
             </div>
           </div>
         ) : (
-          /* List & Card Grid View */
           <ListView
             lgus={lgus}
             selectedLguId={selectedLguId}
@@ -217,7 +217,6 @@ export default function HomePage() {
         )}
       </main>
 
-      {/* School Finder Modal */}
       {isSchoolSearchOpen && (
         <SchoolFinderModal
           isOpen

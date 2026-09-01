@@ -1,4 +1,5 @@
-export const DASHBOARD_REFRESH_INTERVAL_MS = 30_000;
+export const DASHBOARD_REFRESH_INTERVAL_MS = 60_000;
+export const DASHBOARD_REFRESH_SECOND = 30;
 
 export function createDashboardRenderFingerprint<
   Summary extends {
@@ -27,37 +28,56 @@ export interface VisibilityTarget {
   removeEventListener(type: "visibilitychange", listener: () => void): void;
 }
 
+export function millisecondsUntilNextDashboardRefresh(nowMs = Date.now()): number {
+  const now = new Date(nowMs);
+  const next = new Date(nowMs);
+  next.setMilliseconds(0);
+  next.setSeconds(DASHBOARD_REFRESH_SECOND);
+  if (next.getTime() <= now.getTime()) next.setMinutes(next.getMinutes() + 1);
+  return next.getTime() - now.getTime();
+}
+
 export function startVisibilityAwareDashboardRefresh(options: {
   visibilityTarget: VisibilityTarget;
   refresh: () => void | Promise<void>;
-  setIntervalFn?: typeof setInterval;
-  clearIntervalFn?: typeof clearInterval;
+  now?: () => number;
+  setTimeoutFn?: typeof setTimeout;
+  clearTimeoutFn?: typeof clearTimeout;
 }): () => void {
-  const setIntervalFn = options.setIntervalFn || setInterval;
-  const clearIntervalFn = options.clearIntervalFn || clearInterval;
-  let interval: ReturnType<typeof setInterval> | undefined;
+  const now = options.now || Date.now;
+  const setTimeoutFn = options.setTimeoutFn || setTimeout;
+  const clearTimeoutFn = options.clearTimeoutFn || clearTimeout;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let stopped = false;
 
-  const stop = () => {
-    if (interval !== undefined) clearIntervalFn(interval);
-    interval = undefined;
+  const cancel = () => {
+    if (timer !== undefined) clearTimeoutFn(timer);
+    timer = undefined;
   };
-  const start = () => {
-    if (interval !== undefined || options.visibilityTarget.visibilityState !== "visible") return;
-    interval = setIntervalFn(() => void options.refresh(), DASHBOARD_REFRESH_INTERVAL_MS);
+
+  const schedule = () => {
+    cancel();
+    if (stopped || options.visibilityTarget.visibilityState !== "visible") return;
+    timer = setTimeoutFn(() => {
+      timer = undefined;
+      if (stopped || options.visibilityTarget.visibilityState !== "visible") return;
+      void Promise.resolve(options.refresh()).finally(schedule);
+    }, millisecondsUntilNextDashboardRefresh(now()));
   };
+
   const onVisibilityChange = () => {
     if (options.visibilityTarget.visibilityState !== "visible") {
-      stop();
+      cancel();
       return;
     }
-    void options.refresh();
-    start();
+    void Promise.resolve(options.refresh()).finally(schedule);
   };
 
-  start();
+  schedule();
   options.visibilityTarget.addEventListener("visibilitychange", onVisibilityChange);
   return () => {
-    stop();
+    stopped = true;
+    cancel();
     options.visibilityTarget.removeEventListener("visibilitychange", onVisibilityChange);
   };
 }

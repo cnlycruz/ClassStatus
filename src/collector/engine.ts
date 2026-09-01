@@ -3,10 +3,11 @@ import { CollectorLog, CollectorSourceConfig, CollectorSummary, SuspensionRecord
 import { COLLECTOR_SOURCES } from "@/data/sources";
 import { normalizeAnnouncementSegments } from "./normalizer";
 import { evaluateSuspensionLifecycle } from "./lifecycle";
-import { appendCollectorLogs, upsertCollectedSuspensionRecord } from "./storage";
+import { upsertCollectedSuspensionRecord } from "./storage";
 import { isSourceEligible, isSourceOperational } from "./sourcePolicy";
 import { MediaCollectorAdapter } from "./sources/mediaAdapter";
 import { SourceCollectorAdapter } from "./sources/types";
+import { createCollectorLogWriter } from "./liveLogWriter";
 
 export interface CollectorEngineOptions {
   sources?: CollectorSourceConfig[];
@@ -45,6 +46,7 @@ export class CollectorEngine {
     const runId = `run-${runStarted.getTime()}`;
     const startedAt = runStarted.toISOString();
     const logs: CollectorLog[] = [];
+    const liveLogWriter = createCollectorLogWriter();
     const eligibleSources = this.sources.filter(isSourceEligible);
 
     let sourcesSucceeded = 0;
@@ -64,7 +66,7 @@ export class CollectorEngine {
       details?: Record<string, unknown>
     ) => {
       const timestamp = this.now().toISOString();
-      logs.push({
+      const log: CollectorLog = {
         id: `log-${timestamp}-${logs.length}`,
         runId,
         timestamp,
@@ -73,7 +75,9 @@ export class CollectorEngine {
         sourceName,
         message,
         details,
-      });
+      };
+      logs.push(log);
+      liveLogWriter.enqueue(log);
     };
 
     addLog("info", "engine", "Collector Engine", `Starting Tier 3 collection sweep ${runId}.`);
@@ -258,7 +262,7 @@ export class CollectorEngine {
       "Collector Engine",
       `Sweep complete: ${announcementsPublished} published, ${announcementsHeld} held, ${announcementsRejected} rejected.`
     );
-    await appendCollectorLogs(logs);
+    await liveLogWriter.flush();
 
     return {
       runId,

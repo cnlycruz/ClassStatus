@@ -18,7 +18,11 @@ export async function GET() {
     const state = await suspensionStore.readState();
     const records = state.records.filter((record) => effectiveAdminState(record) !== "removed" && !evaluateSuspensionLifecycle(record).isExpired);
     const sources = globalCollector.getSources().filter((source) => source.operationalState === "operational" && source.enabled);
-    const [logs, freshness, manualNotifications] = await Promise.all([getCollectorLogs(), getCollectorFreshness(), listManualBroadcastHistory(10)]);
+    const [logs, freshness, manualNotifications] = await Promise.all([
+      getCollectorLogs(),
+      getCollectorFreshness().catch(() => ({ lastSuccessfulCheckAt: null })),
+      listManualBroadcastHistory(10).catch(() => []),
+    ]);
     return Response.json({ session, sources, health: deriveCollectorHealth(sources, logs, freshness), logs, records, audit: await listAudit(50), auditTotal: state.audit.length, manualNotifications, registries: { lgus: Object.values(NCR_LGUS).map(({ id, name }) => ({ id, name })), schools: NCR_SCHOOLS.map(({ id, name, campusName, lguId, sector, levelsOffered }) => ({ id, name, campusName, lguId, sector, levelsOffered })) } }, { headers: { "Cache-Control": "no-store, private" } });
   } catch (error) { return adminErrorResponse(error); }
 }

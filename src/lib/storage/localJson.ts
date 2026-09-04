@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import lockfile from "proper-lockfile";
 import { z } from "zod";
 import type { AdminSecurityDocument, AdminStateDocument, AuditEntry } from "@/lib/admin/types";
-import type { CollectorLog, SourceCitation, SuspensionRecord } from "@/types";
+import type { CollectorFreshness, CollectorLog, SourceCitation, SuspensionRecord } from "@/types";
 import { effectiveAdminState } from "@/utils/administrativeState";
 import { isLivePublicationRecord, isLiveTier3Record } from "@/collector/sourcePolicy";
 import { projectPublicStorageRecord } from "@/lib/admin/publicProjection";
@@ -34,6 +34,8 @@ function dataDirectory(): string {
 function stateFile(): string { return path.join(dataDirectory(), "suspensions.json"); }
 function securityFile(): string { return path.join(dataDirectory(), "admin_security.json"); }
 function collectorLogsFile(): string { return path.join(dataDirectory(), "collector_logs.json"); }
+function collectorFreshnessFile(): string { return path.join(dataDirectory(), "collector_freshness.json"); }
+function historyFile(): string { return path.join(dataDirectory(), "published_history.json"); }
 
 function ensureFile(file: string, initial: unknown): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -175,10 +177,38 @@ function readCollectorLogs(): CollectorLog[] {
   }).passthrough()).parse(JSON.parse(fs.readFileSync(file, "utf8"))) as CollectorLog[];
 }
 
+function readCollectorFreshness(): CollectorFreshness {
+  const file = collectorFreshnessFile();
+  ensureFile(file, { lastSuccessfulCheckAt: null });
+  return z.object({ lastSuccessfulCheckAt: z.string().datetime({ offset: true }).nullable() })
+    .parse(JSON.parse(fs.readFileSync(file, "utf8"))) as CollectorFreshness;
+}
+
+function readHistory(): SuspensionRecord[] {
+  ensureFile(historyFile(), []);
+  return z.array(recordSchema).parse(JSON.parse(fs.readFileSync(historyFile(), "utf8"))) as unknown as SuspensionRecord[];
+}
+
+function upsertHistory(record: SuspensionRecord): void {
+  withFileLock(historyFile(), [], () => {
+    const history = readHistory();
+    const key = `${record.lguId}:${record.schoolId || ""}:${record.effectiveDate}`;
+    const index = history.findIndex((item) => `${item.lguId}:${item.schoolId || ""}:${item.effectiveDate}` === key);
+    if (index >= 0) history[index] = record;
+    else history.unshift(record);
+    atomicWrite(historyFile(), history);
+  });
+}
+
 export const localSuspensionStore: SuspensionStore = {
   async readState() { return localStateStore.readState(); },
   async listPublicRecords() {
     return localStateStore.readState().records
+      .filter((record) => isLivePublicationRecord(record) && effectiveAdminState(record) === "active")
+      .map(projectPublicStorageRecord);
+  },
+  async listPublicHistory() {
+    return readHistory()
       .filter((record) => isLivePublicationRecord(record) && effectiveAdminState(record) === "active")
       .map(projectPublicStorageRecord);
   },
@@ -210,6 +240,7 @@ export const localSuspensionStore: SuspensionStore = {
       const now = new Date().toISOString();
       confirmation.consumedAt = now;
       state.records.unshift(input.record);
+      upsertHistory(input.record);
       appendStateAudit(state, { action: "manual-publication", outcome: "success", recordId: input.record.id, targetSummary: input.targetSummary, correlationId: input.idempotencyKey });
       state.idempotency.push({ key: input.idempotencyKey, sessionId: input.sessionId, operation: "publish", payloadHash: input.requestHash, createdAt: now, response: input.record });
       return input.record;
@@ -310,6 +341,7 @@ export const localSuspensionStore: SuspensionStore = {
       if (plausibleMatches.length === 0) {
         const created = { ...candidate, source: { ...candidate.source, verified: false }, additionalSources: [] };
         state.records.unshift(created);
+        upsertHistory(created);
         return { changed: true, value: { action: "created", record: created } };
       }
 
@@ -392,6 +424,7 @@ export const localSuspensionStore: SuspensionStore = {
         revision: (existing.revision || 1) + 1,
       };
       state.records[existingIndex] = merged;
+      upsertHistory(merged);
       return { changed: true, value: { action, record: merged } };
     });
   },
@@ -408,6 +441,22 @@ export const localSuspensionStore: SuspensionStore = {
   async listCollectorLogs(limit = 200) {
     assertLocalJsonAvailable();
     return readCollectorLogs().slice(0, Math.max(1, Math.min(limit, 200)));
+  },
+  async getCollectorFreshness() {
+    assertLocalJsonAvailable();
+    return readCollectorFreshness();
+  },
+  async recordSuccessfulCollectorCheck(completedAt) {
+    assertLocalJsonAvailable();
+    if (Number.isNaN(Date.parse(completedAt))) throw new Error("collector-freshness-invalid");
+    withFileLock(collectorFreshnessFile(), { lastSuccessfulCheckAt: null }, () => {
+      const current = readCollectorFreshness();
+      // Collector completions are normally ordered, but do not allow a late
+      // finishing older process to move the public timestamp backwards.
+      if (!current.lastSuccessfulCheckAt || Date.parse(completedAt) >= Date.parse(current.lastSuccessfulCheckAt)) {
+        atomicWrite(collectorFreshnessFile(), { lastSuccessfulCheckAt: completedAt });
+      }
+    });
   },
 };
 

@@ -10,6 +10,7 @@ async function selectedStore(): Promise<SuspensionStore> {
 export const suspensionStore: SuspensionStore = {
   async readState() { return (await selectedStore()).readState(); },
   async listPublicRecords() { return (await selectedStore()).listPublicRecords(); },
+  async listPublicHistory() { return (await selectedStore()).listPublicHistory(); },
   async createConfirmation(sessionId, payloadHash) { return (await selectedStore()).createConfirmation(sessionId, payloadHash); },
   async publishManual(input) { return (await selectedStore()).publishManual(input); },
   async mutateLifecycle(input) { return (await selectedStore()).mutateLifecycle(input); },
@@ -20,6 +21,8 @@ export const suspensionStore: SuspensionStore = {
   async clearCollected() { return (await selectedStore()).clearCollected(); },
   async appendCollectorLogs(logs) { return (await selectedStore()).appendCollectorLogs(logs); },
   async listCollectorLogs(limit) { return (await selectedStore()).listCollectorLogs(limit); },
+  async getCollectorFreshness() { return (await selectedStore()).getCollectorFreshness(); },
+  async recordSuccessfulCollectorCheck(completedAt) { return (await selectedStore()).recordSuccessfulCollectorCheck(completedAt); },
 };
 
 export { localSecurityStore as securityStore, localStateStore };

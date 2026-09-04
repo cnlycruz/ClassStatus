@@ -8,6 +8,7 @@ export function createDashboardRenderFingerprint<
   },
 >(payload: {
   summary: Summary;
+  freshness?: unknown;
   lgus: unknown;
 }): string {
   const {
@@ -18,6 +19,7 @@ export function createDashboardRenderFingerprint<
 
   return JSON.stringify({
     summary: renderedSummary,
+    freshness: payload.freshness,
     lgus: payload.lgus,
   });
 }

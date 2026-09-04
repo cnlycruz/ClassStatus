@@ -3,11 +3,12 @@ import { CollectorLog, CollectorSourceConfig, CollectorSummary, SuspensionRecord
 import { COLLECTOR_SOURCES } from "@/data/sources";
 import { normalizeAnnouncementSegments } from "./normalizer";
 import { evaluateSuspensionLifecycle } from "./lifecycle";
-import { upsertCollectedSuspensionRecord } from "./storage";
+import { recordSuccessfulCollectorCheck, upsertCollectedSuspensionRecord } from "./storage";
 import { isSourceEligible, isSourceOperational } from "./sourcePolicy";
 import { MediaCollectorAdapter } from "./sources/mediaAdapter";
 import { SourceCollectorAdapter } from "./sources/types";
 import { createCollectorLogWriter } from "./liveLogWriter";
+import { dispatchPendingPushNotifications } from "@/lib/notifications/dispatch";
 
 export interface CollectorEngineOptions {
   sources?: CollectorSourceConfig[];
@@ -263,6 +264,21 @@ export class CollectorEngine {
       `Sweep complete: ${announcementsPublished} published, ${announcementsHeld} held, ${announcementsRejected} rejected.`
     );
     await liveLogWriter.flush();
+
+    // This only retries durable, previously-created outbox deliveries. It never
+    // creates an alert event from a collector sweep or an unchanged candidate.
+    try { await dispatchPendingPushNotifications(); } catch { /* Push is independent of publication/freshness. */ }
+
+    // A public freshness check represents a complete successful sweep of the
+    // currently operational sources. A partial or failed run must not make the
+    // dashboard look freshly checked when one of those sources was unavailable.
+    if (
+      eligibleSources.length > 0
+      && sourcesSucceeded === eligibleSources.length
+      && sourcesFailed === 0
+    ) {
+      await recordSuccessfulCollectorCheck(completedAt);
+    }
 
     return {
       runId,

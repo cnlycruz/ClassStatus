@@ -104,6 +104,21 @@ describe("scheduled collector storage path", () => {
     );
   });
 
+  it("writes and reads only the public-safe successful-check timestamp", async () => {
+    mocks.publicRpc.mockResolvedValueOnce({ data: true, error: null });
+    await supabaseSuspensionStore.recordSuccessfulCollectorCheck("2026-09-05T00:03:00.000Z");
+    expect(mocks.publicRpc).toHaveBeenCalledWith(
+      "classstatus_production_worker_record_successful_collector_check",
+      expect.objectContaining({ p_payload: JSON.stringify({ completedAt: "2026-09-05T00:03:00.000Z" }) })
+    );
+
+    mocks.publicRpc.mockResolvedValueOnce({ data: { lastSuccessfulCheckAt: "2026-09-05T00:03:00.000Z" }, error: null });
+    await expect(supabaseSuspensionStore.getCollectorFreshness()).resolves.toEqual({ lastSuccessfulCheckAt: "2026-09-05T00:03:00.000Z" });
+    expect(mocks.publicRpc).toHaveBeenLastCalledWith(
+      "classstatus_production_get_public_collector_freshness"
+    );
+  });
+
   it("keeps Preview storage on Preview RPCs while Preview remains deployed", async () => {
     mocks.state.namespace = "preview";
     process.env.CLASSSTATUS_CRON_SECRET = "test-preview-cron-secret-" + "x".repeat(32);

@@ -85,4 +85,14 @@ describe("public responsive UI contracts", () => {
     expect(panel).not.toContain("max-h-44");
     expect(globals).not.toContain("lgu-detail-scroll-region");
   });
+
+  it("keeps one compact, accessible freshness indicator beside evidence without changing the panel layout", () => {
+    const panel = read("src", "components", "LguDetailPanel.tsx");
+    expect(panel).toContain("formatFreshness");
+    expect(panel).toContain("freshness?.text");
+    expect(panel).toContain("Freshness unavailable");
+    expect(panel).toContain("title={freshness?.exactTime}");
+    expect(panel).toContain("60_000 - (Date.now() % 60_000)");
+    expect(panel).toContain("!record &&");
+  });
 });

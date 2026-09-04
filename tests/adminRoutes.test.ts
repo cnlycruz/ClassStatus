@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { GET as getLogs } from "@/app/api/collector/logs/route";
+import { GET as getBootstrap } from "@/app/api/admin/bootstrap/route";
 import { POST as runCollector } from "@/app/api/collector/run/route";
 import { POST as clearLiveData } from "@/app/api/demo-mode/route";
 import { PUT as mutateSources } from "@/app/api/collector/sources/route";
@@ -17,6 +18,7 @@ beforeEach(() => {
 describe("admin route boundaries", () => {
   it("rejects unauthenticated diagnostics and collector mutations", async () => {
     expect((await getLogs()).status).toBe(401);
+    expect((await getBootstrap()).status).toBe(401);
     const request = new NextRequest("http://localhost:3000/api/collector/run", { method: "POST", headers: { origin: "http://localhost:3000", "sec-fetch-site": "same-origin", "content-type": "application/json", "x-csrf-token": "forged" }, body: "{}" });
     expect((await runCollector(request)).status).toBe(401);
   });

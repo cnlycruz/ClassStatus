@@ -217,6 +217,18 @@ export interface CollectorSummary {
   logs: CollectorLog[];
 }
 
+/** Public-safe state for the most recent fully successful operational collector sweep. */
+export interface CollectorFreshness {
+  lastSuccessfulCheckAt: string | null;
+}
+
+export interface PublicStatusHistoryEntry {
+  effectiveDate: string;
+  status: SuspensionStatus;
+  affectedLevels: EducationLevel[];
+  schoolSector: SchoolSector;
+}
+
 export interface MayPasokSummary {
   updatedAt: string;
   philippineTimeFormatted: string;

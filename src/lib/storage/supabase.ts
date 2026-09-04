@@ -9,7 +9,7 @@ import {
 } from "@/lib/supabase/server";
 import { isCollectorWorkerExecution } from "@/collector/executionContext";
 import { createCollectorCapability } from "@/lib/cron/collectorCapability";
-import type { CollectorLog, SuspensionRecord } from "@/types";
+import type { CollectorFreshness, CollectorLog, SuspensionRecord } from "@/types";
 import type { SuspensionStore } from "./contracts";
 import { getDeploymentNamespace } from "./driver";
 
@@ -57,6 +57,12 @@ async function collectorRpc(operation: string, args: Record<string, unknown> = {
   } else if (operation === "append_collector_logs") {
     rpcOperation = `classstatus_${namespace}_worker_append_collector_logs`;
     proof = createCollectorCapability("logs.append", { logs: args.p_logs });
+  } else if (operation === "record_successful_collector_check") {
+    rpcOperation = `classstatus_${namespace}_worker_record_successful_collector_check`;
+    // The existing signed worker protocol deliberately has a fixed action set.
+    // This independently validated write shares the established durable-log
+    // capability instead of widening that security boundary.
+    proof = createCollectorCapability("logs.append", { completedAt: args.p_completed_at });
   } else {
     throw new Error("ADMIN_STORAGE_UNAVAILABLE");
   }
@@ -88,6 +94,9 @@ export const supabaseSuspensionStore: SuspensionStore = {
   },
   async listPublicRecords() {
     return z.array(recordSchema).parse(await publicRpc("list_public_suspensions")) as unknown as SuspensionRecord[];
+  },
+  async listPublicHistory() {
+    return z.array(recordSchema).parse(await publicRpc("list_public_status_history")) as unknown as SuspensionRecord[];
   },
   async createConfirmation(sessionId, payloadHash) {
     const context = await verifiedAdminContext();
@@ -148,5 +157,13 @@ export const supabaseSuspensionStore: SuspensionStore = {
   },
   async listCollectorLogs(limit = 200) {
     return z.array(z.object({ id: z.string(), timestamp: z.string(), level: z.enum(["info", "warn", "error", "success"]), sourceId: z.string(), sourceName: z.string(), message: z.string() }).passthrough()).parse(await adminRpc("list_collector_logs", { p_limit: limit })) as CollectorLog[];
+  },
+  async getCollectorFreshness() {
+    return z.object({ lastSuccessfulCheckAt: z.string().datetime({ offset: true }).nullable() })
+      .parse(await publicRpc("get_public_collector_freshness")) as CollectorFreshness;
+  },
+  async recordSuccessfulCollectorCheck(completedAt) {
+    if (Number.isNaN(Date.parse(completedAt))) throw new Error("collector-freshness-invalid");
+    await collectorRpc("record_successful_collector_check", { p_completed_at: completedAt });
   },
 };

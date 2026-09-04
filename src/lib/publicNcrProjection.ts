@@ -1,7 +1,7 @@
 import { deriveLGUStatus } from "@/collector/lifecycle";
 import { ALL_LGU_IDS, NCR_LGUS } from "@/data/lgus";
 import { projectPublicSuspension } from "@/lib/admin/publicProjection";
-import type { LGUInfo, SuspensionRecord, SuspensionStatus } from "@/types";
+import type { CollectorFreshness, LGUInfo, PublicStatusHistoryEntry, SuspensionRecord, SuspensionStatus } from "@/types";
 import {
   formatManilaDateReadable,
   formatManilaTime,
@@ -16,6 +16,7 @@ export interface PublicNcrLguProjection extends LGUInfo {
   hasUpcoming: boolean;
   upcomingRecord?: PublicSuspensionProjection;
   activeRecords: PublicSuspensionProjection[];
+  history: PublicStatusHistoryEntry[];
 }
 
 export interface PublicNcrProjection {
@@ -32,12 +33,13 @@ export interface PublicNcrProjection {
     hasUpcomingSuspensions: boolean;
     overallStatusHeadline: string;
   };
+  freshness: CollectorFreshness;
   lgus: PublicNcrLguProjection[];
 }
 
 export function buildPublicNcrProjection(
   records: readonly SuspensionRecord[],
-  options: { effectiveDate?: string; now?: Date } = {},
+  options: { effectiveDate?: string; now?: Date; freshness?: CollectorFreshness; history?: readonly SuspensionRecord[] } = {},
 ): PublicNcrProjection {
   const now = options.now || new Date();
   const effectiveDate = options.effectiveDate || getManilaDateString(now);
@@ -68,6 +70,14 @@ export function buildPublicNcrProjection(
       hasUpcoming: derived.hasUpcoming,
       upcomingRecord: derived.upcomingRecord ? projectPublicSuspension(derived.upcomingRecord) : undefined,
       activeRecords: derived.activeRecords.map(projectPublicSuspension),
+      history: [...(options.history || []).filter((record) => record.lguId === lguId && !record.schoolId)
+        .reduce((byDate, record) => {
+          const current = byDate.get(record.effectiveDate);
+          if (!current || Date.parse(record.publishedAt) >= Date.parse(current.publishedAt)) byDate.set(record.effectiveDate, record);
+          return byDate;
+        }, new Map<string, SuspensionRecord>()).values()]
+        .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate)).slice(0, 7)
+        .map((record) => ({ effectiveDate: record.effectiveDate, status: record.status, affectedLevels: record.affectedLevels, schoolSector: record.schoolSector })),
     };
   });
 
@@ -96,6 +106,7 @@ export function buildPublicNcrProjection(
       hasUpcomingSuspensions: upcomingCount > 0,
       overallStatusHeadline,
     },
+    freshness: options.freshness || { lastSuccessfulCheckAt: null },
     lgus,
   };
 }

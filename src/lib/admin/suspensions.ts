@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { suspensionStore } from "@/lib/storage";
 import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
 import { noticeEventKey } from "@/lib/suspensions/noticeModel";
+import { enqueuePublicationNotification } from "@/lib/notifications/dispatch";
 import { getSecurityPepper } from "./config";
 import { hmac, safeEqual, sha256, stableJson } from "./crypto";
 import { normalizeManualDraft } from "./validation";
@@ -49,7 +50,7 @@ export async function publishManualSuspension(input: { draft: unknown; confirmat
       manualEvidence: { providerPreset: normalized.evidence.preset, providerName: normalized.resolvedEvidenceProvider, proofUrl: normalized.normalizedProofUrl, ...(normalized.publicNote ? { publicNote: normalized.publicNote } : {}) },
   };
   record.eventKey = noticeEventKey(identityNamespace(), record);
-  return suspensionStore.publishManual({
+  const published = await suspensionStore.publishManual({
     record,
     confirmationId,
     confirmationPayloadHash: hash,
@@ -58,6 +59,8 @@ export async function publishManualSuspension(input: { draft: unknown; confirmat
     sessionId,
     targetSummary: normalized.targetName,
   });
+  await enqueuePublicationNotification(published, "created");
+  return published;
 }
 
 function recordIdPart(value: string): string { return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "evidence"; }

@@ -7,13 +7,14 @@ import { Footer } from "@/components/Footer";
 import { StatusHero } from "@/components/StatusHero";
 import { NcrInteractiveMap } from "@/components/NcrInteractiveMap";
 import { ALL_LGU_IDS, NCR_LGUS } from "@/data/lgus";
-import { LGUId, LGUInfo, MayPasokSummary, SuspensionRecord, SuspensionStatus } from "@/types";
+import { CollectorFreshness, LGUId, LGUInfo, MayPasokSummary, PublicStatusHistoryEntry, SuspensionRecord, SuspensionStatus } from "@/types";
 import { getInitialDashboardSelection } from "@/lib/dashboardSelection";
 import {
   createDashboardRenderFingerprint,
   startVisibilityAwareDashboardRefresh,
 } from "@/lib/dashboardRefresh";
 import { MapPin, Compass } from "lucide-react";
+import { SuspensionAlerts } from "@/components/SuspensionAlerts";
 
 const LguDetailPanel = dynamic(() => import("@/components/LguDetailPanel").then((module) => module.LguDetailPanel));
 const ListView = dynamic(() => import("@/components/ListView").then((module) => module.ListView));
@@ -36,9 +37,11 @@ export default function HomePage() {
       hasUpcoming: boolean;
       upcomingRecord?: SuspensionRecord;
       activeRecords?: SuspensionRecord[];
+      history?: PublicStatusHistoryEntry[];
     })[]
   >([]);
   const [summary, setSummary] = useState<MayPasokSummary | null>(null);
+  const [freshness, setFreshness] = useState<CollectorFreshness>({ lastSuccessfulCheckAt: null });
   const [selectedLguId, setSelectedLguId] = useState<LGUId | null>(null);
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"map" | "list">("map");
@@ -63,6 +66,7 @@ export default function HomePage() {
         dashboardRenderFingerprint.current = nextFingerprint;
         setLgus(json.lgus);
         setSummary(json.summary);
+        setFreshness(json.freshness || { lastSuccessfulCheckAt: null });
         hasDashboardData.current = true;
       } catch (error) {
         if (controller.signal.aborted || hasDashboardData.current) return;
@@ -89,6 +93,7 @@ export default function HomePage() {
           hasUpcomingSuspensions: false,
           overallStatusHeadline: "Checking Tier 3 class-suspension reports across Metro Manila",
         });
+        setFreshness({ lastSuccessfulCheckAt: null });
         hasDashboardData.current = true;
       }
     })();
@@ -172,6 +177,7 @@ export default function HomePage() {
           onViewModeChange={setViewMode}
           onRefresh={loadData}
         />
+        <SuspensionAlerts selectedLguId={selectedLguId} />
 
         {viewMode === "map" ? (
           <div className="dashboard-map-region grid grid-cols-1 gap-5 lg:h-[46rem] lg:grid-cols-12 lg:items-stretch lg:gap-5">
@@ -195,7 +201,7 @@ export default function HomePage() {
 
             <div className="lg:col-span-4 lg:h-full lg:min-h-0">
               {selectedLgu ? (
-                <LguDetailPanel lgu={selectedLgu} onClose={clearSelection} />
+                <LguDetailPanel lgu={selectedLgu} lastSuccessfulCheckAt={freshness.lastSuccessfulCheckAt} onClose={clearSelection} />
               ) : (
                 <div className="hidden lg:flex h-full rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 p-6 flex-col items-center justify-center text-center text-slate-400 space-y-3">
                   <Compass className="h-10 w-10 text-slate-300 dark:text-slate-700 animate-pulse" />

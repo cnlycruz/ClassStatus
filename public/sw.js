@@ -54,3 +54,33 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch { payload = {}; }
+  const title = typeof payload.title === "string" ? payload.title : "Class Status";
+  const body = typeof payload.body === "string" ? payload.body : "A class status advisory was published.";
+  const url = typeof payload.url === "string" && payload.url.startsWith("/") ? payload.url : "/";
+  const tag = typeof payload.tag === "string" ? payload.tag : "class-status-alert";
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    tag,
+    data: { url },
+    icon: "/icons/class-status-icon-192.png",
+    badge: "/icons/class-status-icon-192.png",
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const destination = event.notification.data && typeof event.notification.data.url === "string"
+    ? event.notification.data.url : "/";
+  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (windows) => {
+    const existing = windows.find((client) => new URL(client.url).origin === self.location.origin);
+    if (existing) {
+      if ("navigate" in existing) await existing.navigate(destination);
+      return existing.focus();
+    }
+    return self.clients.openWindow(destination);
+  }));
+});

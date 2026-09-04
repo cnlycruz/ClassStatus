@@ -111,4 +111,10 @@ describe("dashboard render fingerprint", () => {
       createDashboardRenderFingerprint(dashboardPayload),
     );
   });
+
+  it("changes when the public successful-check timestamp changes", () => {
+    const first = { ...dashboardPayload, freshness: { lastSuccessfulCheckAt: "2026-09-01T00:00:00.000Z" } };
+    const next = { ...dashboardPayload, freshness: { lastSuccessfulCheckAt: "2026-09-01T00:01:00.000Z" } };
+    expect(createDashboardRenderFingerprint(first)).not.toBe(createDashboardRenderFingerprint(next));
+  });
 });

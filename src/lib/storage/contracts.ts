@@ -3,7 +3,7 @@ import type {
   AuditEntry,
   ConfirmationReceipt,
 } from "@/lib/admin/types";
-import type { CollectorLog, SuspensionRecord } from "@/types";
+import type { CollectorFreshness, CollectorLog, SuspensionRecord } from "@/types";
 
 export type DeploymentNamespace = "preview" | "production";
 export type LifecycleOperation = "remove" | "undo";
@@ -47,6 +47,7 @@ export interface AuditPage {
 export interface SuspensionStore {
   readState(): Promise<AdminStateDocument>;
   listPublicRecords(): Promise<SuspensionRecord[]>;
+  listPublicHistory(): Promise<SuspensionRecord[]>;
   createConfirmation(sessionId: string, payloadHash: string): Promise<ConfirmationReceipt>;
   publishManual(input: ManualPublishMutation): Promise<SuspensionRecord>;
   mutateLifecycle(input: LifecycleMutation): Promise<SuspensionRecord>;
@@ -57,4 +58,6 @@ export interface SuspensionStore {
   clearCollected(): Promise<void>;
   appendCollectorLogs(logs: CollectorLog[]): Promise<void>;
   listCollectorLogs(limit?: number): Promise<CollectorLog[]>;
+  getCollectorFreshness(): Promise<CollectorFreshness>;
+  recordSuccessfulCollectorCheck(completedAt: string): Promise<void>;
 }

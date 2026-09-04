@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { LGUInfo, SuspensionStatus, SuspensionRecord } from "@/types";
+import { LGUInfo, PublicStatusHistoryEntry, SuspensionStatus, SuspensionRecord } from "@/types";
 import { NCR_SCHOOLS } from "@/data/schools";
 import { getNearestSheetSnap, getSheetSnapHeights, shouldDismissSheet } from "@/lib/bottomSheet";
+import { formatFreshness } from "@/lib/freshness";
 import {
   X,
   ShieldCheck,
@@ -27,12 +28,18 @@ interface LguDetailPanelProps {
     hasUpcoming: boolean;
     upcomingRecord?: SuspensionRecord;
     activeRecords?: SuspensionRecord[];
+    history?: PublicStatusHistoryEntry[];
   }) | null;
+  lastSuccessfulCheckAt?: string | null;
   onClose: () => void;
 }
 
-export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
+export function LguDetailPanel({ lgu, lastSuccessfulCheckAt, onClose }: LguDetailPanelProps) {
   const [copied, setCopied] = useState(false);
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  // Seed from the persisted timestamp so server and first client render agree;
+  // update on minute boundaries only after hydration.
+  const [freshnessNow, setFreshnessNow] = useState<Date | null>(null);
   const [sheetHeight, setSheetHeight] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isDismissing, setIsDismissing] = useState(false);
@@ -110,10 +117,28 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
     if (dismissTimerRef.current !== null) window.clearTimeout(dismissTimerRef.current);
   }, []);
 
+  useEffect(() => {
+    if (!lastSuccessfulCheckAt) return;
+    let timer: number | undefined;
+    const update = () => setFreshnessNow(new Date());
+    const schedule = () => {
+      const delay = 60_000 - (Date.now() % 60_000);
+      timer = window.setTimeout(() => {
+        update();
+        schedule();
+      }, delay);
+    };
+    update();
+    schedule();
+    return () => { if (timer !== undefined) window.clearTimeout(timer); };
+  }, [lastSuccessfulCheckAt]);
+
   if (!lgu) return null;
 
   const record = lgu.primaryRecord;
+  const freshness = formatFreshness(lastSuccessfulCheckAt, freshnessNow || (lastSuccessfulCheckAt ? new Date(lastSuccessfulCheckAt) : undefined));
   const lguSchools = NCR_SCHOOLS.filter((s) => s.lguId === lgu.id);
+  const visibleHistory = (lgu.history || []).slice(0, showAllHistory ? 7 : 3);
 
   const handleShare = async () => {
     const statusText =
@@ -353,7 +378,7 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
             </h4>
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-3.5 space-y-2 shadow-sm">
               <div className="flex items-start justify-between gap-2">
-                <div>
+                <div className="min-w-0">
                   <div className="font-bold text-slate-900 dark:text-white text-xs">
                     {record.source.name}
                   </div>
@@ -362,6 +387,15 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
                       ? "Manually verified by Class Status Admin"
                       : `${record.source.organization} • Tier ${record.source.reliabilityTier} Media Report`}
                   </div>
+                  <p
+                    className="mt-1 text-[10px] text-slate-500 dark:text-slate-400"
+                    title={freshness?.exactTime}
+                    aria-label={freshness ? `${freshness.text}. Exact time: ${freshness.exactTime}` : "Freshness unavailable"}
+                  >
+                    {freshness?.text || "Freshness unavailable"}
+                    {freshness?.state === "delayed" && <span className="ml-1 text-amber-600 dark:text-amber-400">• Delayed</span>}
+                    {freshness?.state === "outdated" && <span className="ml-1 text-red-600 dark:text-red-400">• Outdated</span>}
+                  </p>
                 </div>
                 <a
                   href={record.source.url}
@@ -386,6 +420,36 @@ export function LguDetailPanel({ lgu, onClose }: LguDetailPanelProps) {
                 </p>
               )}
             </div>
+          </div>
+        )}
+
+        {!record && (
+          <p
+            className="shrink-0 -mt-1 text-[10px] text-slate-500 dark:text-slate-400"
+            title={freshness?.exactTime}
+            aria-label={freshness ? `${freshness.text}. Exact time: ${freshness.exactTime}` : "Freshness unavailable"}
+          >
+            {freshness?.text || "Freshness unavailable"}
+            {freshness?.state === "delayed" && <span className="ml-1 text-amber-600 dark:text-amber-400">• Delayed</span>}
+            {freshness?.state === "outdated" && <span className="ml-1 text-red-600 dark:text-red-400">• Outdated</span>}
+          </p>
+        )}
+
+        {visibleHistory.length > 0 && (
+          <div className="shrink-0 space-y-2">
+            <h4 className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px]">Recent Status</h4>
+            <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:divide-slate-900 dark:border-slate-800 dark:bg-slate-950">
+              {visibleHistory.map((entry) => (
+                <div key={entry.effectiveDate} className="flex gap-3 p-3 text-[11px]">
+                  <time className="w-10 shrink-0 font-bold text-slate-500 dark:text-slate-400">{new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", month: "short", day: "numeric" }).format(new Date(`${entry.effectiveDate}T00:00:00+08:00`))}</time>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900 dark:text-white">{entry.status === "classes-suspended" ? "Classes Suspended" : entry.status === "partial-suspension" ? "Partial Suspension" : "Classes Continue"}</p>
+                    <p className="text-slate-500 dark:text-slate-400">{entry.affectedLevels.includes("all-levels") ? "All Levels" : entry.affectedLevels.map((level) => level.replace("-", " ")).join(", ")} • {entry.schoolSector === "all" ? "Public & Private" : entry.schoolSector === "public" ? "Public Only" : "Private Only"}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {(lgu.history || []).length > 3 && <button type="button" className="text-[11px] font-semibold text-blue-600 dark:text-blue-400" onClick={() => setShowAllHistory((value) => !value)}>{showAllHistory ? "Show less" : "Show more"}</button>}
           </div>
         )}
 

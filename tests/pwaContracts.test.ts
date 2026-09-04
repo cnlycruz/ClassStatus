@@ -51,6 +51,10 @@ describe("PWA contracts", () => {
     expect(worker).toContain('"/icons/class-status-favicon-dark.png"');
     expect(worker).not.toContain('"/LOGODARK.png"');
     expect(worker).not.toContain('caches.match(event.request)');
+    expect(worker).toContain('self.addEventListener("push"');
+    expect(worker).toContain("showNotification(title");
+    expect(worker).toContain('self.addEventListener("notificationclick"');
+    expect(worker).toContain("clients.openWindow(destination)");
   });
 
   it("keeps LAN development assets on HTTP while upgrading production requests", () => {

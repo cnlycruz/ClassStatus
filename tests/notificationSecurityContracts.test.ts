@@ -38,4 +38,12 @@ describe("web push privacy contracts", () => {
     expect(migration).toContain("classstatus_private.manual_notification_store");
     expect(migration).toContain("revoke execute on all functions in schema classstatus_private");
   });
+
+  it("passes payload title and body directly to the service worker notification", () => {
+    const worker = read("public", "sw.js");
+    expect(worker).toContain("showNotification(title");
+    expect(worker).toContain("body,");
+    expect(worker).not.toContain("A class status advisory was published.");
+    expect(worker).not.toContain("Class Status announcement");
+  });
 });

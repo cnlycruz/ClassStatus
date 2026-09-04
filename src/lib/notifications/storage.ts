@@ -137,7 +137,7 @@ export interface ManualBroadcastInput {
 
 function cleanManualInput(input: ManualBroadcastInput): Required<Omit<ManualBroadcastInput, "title">> & { title: string } {
   const message = input.message.trim();
-  const title = input.title?.trim() || "Class Status Announcement";
+  const title = input.title?.trim() || "Class Status";
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestKey) || !message || message.length > 500 || title.length > 100) throw new Error("manual-notification-invalid");
   const targetLguIds = input.recipientMode === "all" ? [] : cleanLguIds(input.targetLguIds);
   return { ...input, title, message, targetLguIds };

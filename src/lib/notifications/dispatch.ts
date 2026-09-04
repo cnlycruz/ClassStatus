@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import type { SuspensionRecord } from "@/types";
+import { NCR_LGUS } from "@/data/lgus";
 import { isLivePublicationRecord } from "@/collector/sourcePolicy";
 import { evaluateSuspensionLifecycle } from "@/collector/lifecycle";
 import { createNotificationEvent, invalidatePushSubscription, listPendingPushDeliveries, recordPushDelivery } from "./storage";
@@ -10,27 +11,44 @@ function getVapidConfig() {
   return publicKey && privateKey && subject ? { publicKey, privateKey, subject } : null;
 }
 
-function levelText(record: SuspensionRecord): string {
-  return record.affectedLevels.includes("all-levels") ? "All Levels" : record.affectedLevels.map((level) => level.replace(/-/g, " ")).join(", ");
+const manilaTimeFormatter = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit", hour12: true });
+
+function levelText(record: SuspensionRecord): string | null {
+  if (record.affectedLevels.includes("all-levels")) return "all levels";
+  const levels = record.affectedLevels.map((level) => level.replace(/-/g, " "));
+  if (!levels.length) return null;
+  return levels.length === 1 ? levels[0] : levels.length === 2 ? `${levels[0]} and ${levels[1]}` : `${levels.slice(0, -1).join(", ")}, and ${levels.at(-1)}`;
 }
-function sectorText(record: SuspensionRecord): string { return record.schoolSector === "all" ? "Public & Private" : record.schoolSector === "public" ? "Public Only" : "Private Only"; }
-function dateText(record: SuspensionRecord): string { return new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", timeZone: "Asia/Manila" }).format(new Date(`${record.effectiveDate}T00:00:00+08:00`)); }
+
+function scopeText(record: SuspensionRecord): string | null {
+  const levels = levelText(record);
+  if (!levels) return null;
+  if (record.schoolSector === "all") return `suspended for ${levels}, public and private.`;
+  if (record.schoolSector === "public") return `suspended for ${levels} in public schools.`;
+  if (record.schoolSector === "private") return `suspended for ${levels} in private schools.`;
+  return null;
+}
+
+function automaticBody(event: NotificationEvent, record: SuspensionRecord): string {
+  const time = manilaTimeFormatter.format(new Date(event.createdAt));
+  const lgu = NCR_LGUS[record.lguId].name;
+  const scope = scopeText(record);
+  return scope ? `As of ${time}, ${lgu} is ${scope}` : `As of ${time}, ${lgu} is suspended.`;
+}
 
 export function notificationPayload(event: NotificationEvent) {
   if (event.kind === "manual") {
     return {
-      title: event.title || "Class Status Announcement",
-      body: event.message || "Class Status announcement",
+      title: "Class Status",
+      body: event.message?.trim() || "",
       url: event.recipientMode === "selected-lgus" && event.targetLguIds?.length === 1 ? `/?lgu=${encodeURIComponent(event.targetLguIds[0])}` : "/",
       tag: `class-status-${event.fingerprint}`,
     };
   }
   const record = event.record!;
-  const name = record.lguId.split("-").map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
-  const isUpdate = event.kind === "update";
   return {
-    title: isUpdate ? "Class Status Update" : "Class Status",
-    body: `${isUpdate ? "Suspension updated in" : "Classes suspended in"} ${name}\n${levelText(record)} • ${sectorText(record)}\n${dateText(record)}`,
+    title: "Class Status",
+    body: automaticBody(event, record),
     url: `/?lgu=${encodeURIComponent(record.lguId)}`,
     tag: `class-status-${event.fingerprint}`,
   };

@@ -64,15 +64,18 @@ describe("durable publication push notifications", () => {
     expect(document().events).toHaveLength(0);
   });
 
-  it("does not make a failed push alter the event and retries the same delivery without a new event", async () => {
+  it("does not make a failed push alter the event and preserves its original publication time on retry", async () => {
     await savePushSubscription({ endpoint: "https://push.example/caloocan", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan"] });
     await createNotificationEvent(record());
-    await dispatchPendingPushNotifications(async () => { throw new Error("network"); });
+    const firstAttempt: string[] = [];
+    await dispatchPendingPushNotifications(async (_delivery, payload) => { firstAttempt.push(payload.body); throw new Error("network"); });
     expect(document().events).toHaveLength(1); expect(document().deliveries[0].state).toBe("failed");
     vi.advanceTimersByTime(60_000);
-    const sent: string[] = [];
-    await dispatchPendingPushNotifications(async (delivery) => { sent.push(delivery.subscription.id); });
+    const sent: Array<{ id: string; body: string }> = [];
+    await dispatchPendingPushNotifications(async (delivery, payload) => { sent.push({ id: delivery.subscription.id, body: payload.body }); });
     expect(sent).toHaveLength(1); expect(document().events).toHaveLength(1); expect(document().deliveries[0].state).toBe("delivered");
+    expect(sent[0].body).toBe(firstAttempt[0]);
+    expect(sent[0].body).toBe("As of 8:00 PM, Caloocan is suspended for all levels, public and private.");
   });
 
   it("filters recipients by LGU, skips unsubscribed users, and deactivates permanently invalid subscriptions", async () => {
@@ -91,11 +94,18 @@ describe("durable publication push notifications", () => {
     expect(caloocan.id).toBeTruthy();
   });
 
-  it("uses only material public fields in the stable fingerprint and builds safe service-worker payloads", () => {
+  it("uses only material public fields in the stable fingerprint and builds the approved automatic payload", () => {
     const first = record(); const rescan = record({ discoveredAt: "2026-09-07T23:00:00+08:00", publishedAt: "2026-09-07T22:00:00+08:00", collectorProvenance: { ...first.collectorProvenance!, runId: "other-run" }, source: { ...first.source, url: "https://example.test/another-source" } });
     expect(notificationFingerprint("preview", first)).toBe(notificationFingerprint("preview", rescan));
     const payload = notificationPayload({ id: "event", deploymentNamespace: "preview", fingerprint: notificationFingerprint("preview", first), familyFingerprint: "v1f:test", kind: "initial", record: first, createdAt: first.discoveredAt });
-    expect(payload.url).toBe("/?lgu=caloocan"); expect(payload.body).toContain("All Levels"); expect(payload.body).not.toContain("example.test");
+    expect(payload).toMatchObject({ title: "Class Status", body: "As of 8:01 PM, Caloocan is suspended for all levels, public and private.", url: "/?lgu=caloocan" });
+    expect(payload.body).not.toContain("example.test");
+  });
+
+  it("uses truthful scoped and unknown-scope automatic wording", () => {
+    const base = { id: "event", deploymentNamespace: "preview" as const, fingerprint: "fingerprint", familyFingerprint: "family", kind: "initial" as const, createdAt: "2026-09-07T12:00:00.000Z" };
+    expect(notificationPayload({ ...base, record: record({ status: "partial-suspension", affectedLevels: ["elementary", "junior-high"], schoolSector: "public" }) }).body).toBe("As of 8:00 PM, Caloocan is suspended for elementary and junior high in public schools.");
+    expect(notificationPayload({ ...base, record: record({ affectedLevels: [] }) }).body).toBe("As of 8:00 PM, Caloocan is suspended.");
   });
 
   it("retains exactly the 17 NCR preference options", () => expect(ALL_LGU_IDS).toHaveLength(17));

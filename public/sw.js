@@ -59,7 +59,7 @@ self.addEventListener("push", (event) => {
   let payload = {};
   try { payload = event.data ? event.data.json() : {}; } catch { payload = {}; }
   const title = typeof payload.title === "string" ? payload.title : "Class Status";
-  const body = typeof payload.body === "string" ? payload.body : "A class status advisory was published.";
+  const body = typeof payload.body === "string" ? payload.body : "";
   const url = typeof payload.url === "string" && payload.url.startsWith("/") ? payload.url : "/";
   const tag = typeof payload.tag === "string" ? payload.tag : "class-status-alert";
   event.waitUntil(self.registration.showNotification(title, {

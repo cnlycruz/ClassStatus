@@ -36,9 +36,19 @@ describe("protected manual custom notifications", () => {
     await savePushSubscription({ endpoint: "https://push.test/caloocan", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan"] });
     await savePushSubscription({ endpoint: "https://push.test/manila", p256dh: "c".repeat(32), auth: "d".repeat(16), lguIds: ["manila"] });
     const broadcast = await createManualBroadcast(input());
-    expect(broadcast).toMatchObject({ created: true, recipientCount: 2, event: { kind: "manual", title: "Class Status Announcement" } });
-    expect(notificationPayload(broadcast.event).url).toBe("/");
+    expect(broadcast).toMatchObject({ created: true, recipientCount: 2, event: { kind: "manual", title: "Class Status" } });
+    expect(notificationPayload(broadcast.event)).toMatchObject({ title: "Class Status", body: input().message, url: "/" });
+    expect(notificationPayload(broadcast.event).title).not.toContain("Announcement");
+    expect(notificationPayload(broadcast.event).body).not.toContain("from Class Status");
     expect(document().deliveries).toHaveLength(2);
+  });
+
+  it("uses exactly the trimmed administrator message without announcement wording", async () => {
+    const broadcast = await createManualBroadcast(input({ message: "  Waiting pa rin sa suspension no?  " }));
+
+    expect(notificationPayload(broadcast.event)).toMatchObject({ title: "Class Status", body: "Waiting pa rin sa suspension no?" });
+    expect(notificationPayload(broadcast.event).body).not.toContain("from Class Status");
+    expect(notificationPayload(broadcast.event).body).not.toContain("Announcement");
   });
 
   it("keeps the authoritative send path available independently of recipient preview", async () => {

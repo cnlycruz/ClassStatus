@@ -5,6 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "./ThemeContext";
+import { SuspensionAlerts } from "./SuspensionAlerts";
+import type { LGUId } from "@/types";
 import {
   MapPin,
   Clock,
@@ -53,10 +55,11 @@ function PhilippineTime({ fallback }: { fallback: string }) {
   return <>{timeStr || fallback}</>;
 }
 
-export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch }: { onOpenSchoolSearch?: () => void }) {
+export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch, selectedLguId }: { onOpenSchoolSearch?: () => void; selectedLguId?: LGUId | null }) {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const showsPublicAlerts = !pathname.startsWith("/collector") && !pathname.startsWith("/auth");
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 bg-white/90 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-950/90 transition-colors">
@@ -140,6 +143,8 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch }: { onOpe
               <span className="hidden truncate sm:inline">Search school or LGU</span>
             </button>
           )}
+
+          {showsPublicAlerts && <SuspensionAlerts selectedLguId={selectedLguId} />}
 
           {/* Dark / Light Theme Toggle */}
           <button

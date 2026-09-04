@@ -5,8 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { ALL_LGU_IDS } from "@/data/lgus";
 import { POST as sendManualNotification } from "@/app/api/admin/notifications/route";
+import { POST as previewManualNotification } from "@/app/api/admin/notifications/preview/route";
+import { sendAdminNotification } from "@/lib/admin/notifications";
 import { dispatchPendingPushNotifications, notificationPayload } from "@/lib/notifications/dispatch";
-import { createManualBroadcast, createNotificationEvent, deactivatePushSubscription, listManualBroadcastHistory, savePushSubscription } from "@/lib/notifications/storage";
+import { createManualBroadcast, createNotificationEvent, deactivatePushSubscription, listManualBroadcastHistory, previewManualBroadcast, savePushSubscription } from "@/lib/notifications/storage";
 import type { LGUId, SuspensionRecord } from "@/types";
 
 let directory = "";
@@ -25,6 +27,11 @@ describe("protected manual custom notifications", () => {
     expect((await sendManualNotification(request)).status).toBe(401);
   });
 
+  it("keeps recipient preview admin-only", async () => {
+    const request = new NextRequest("http://localhost:3000/api/admin/notifications/preview", { method: "POST", headers: { origin: "http://localhost:3000", "sec-fetch-site": "same-origin", "content-type": "application/json" }, body: JSON.stringify(input()) });
+    expect((await previewManualNotification(request)).status).toBe(401);
+  });
+
   it("creates one manual broadcast with all active subscribers, ignoring LGU preferences", async () => {
     await savePushSubscription({ endpoint: "https://push.test/caloocan", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan"] });
     await savePushSubscription({ endpoint: "https://push.test/manila", p256dh: "c".repeat(32), auth: "d".repeat(16), lguIds: ["manila"] });
@@ -32,6 +39,21 @@ describe("protected manual custom notifications", () => {
     expect(broadcast).toMatchObject({ created: true, recipientCount: 2, event: { kind: "manual", title: "Class Status Announcement" } });
     expect(notificationPayload(broadcast.event).url).toBe("/");
     expect(document().deliveries).toHaveLength(2);
+  });
+
+  it("keeps the authoritative send path available independently of recipient preview", async () => {
+    await savePushSubscription({ endpoint: "https://push.test/caloocan", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan"] });
+
+    await expect(sendAdminNotification(input())).resolves.toMatchObject({ created: true, recipientCount: 1 });
+    expect(document().deliveries).toHaveLength(1);
+  });
+
+  it("calculates recipients for all-subscriber and selected-LGU previews without creating an event", async () => {
+    await savePushSubscription({ endpoint: "https://push.test/caloocan", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan"] });
+    await savePushSubscription({ endpoint: "https://push.test/manila", p256dh: "c".repeat(32), auth: "d".repeat(16), lguIds: ["manila"] });
+    await expect(previewManualBroadcast(input())).resolves.toBe(2);
+    await expect(previewManualBroadcast(input({ recipientMode: "selected-lgus", targetLguIds: ["caloocan"] }))).resolves.toBe(1);
+    expect(document().events).toHaveLength(0);
   });
 
   it("targets selected LGUs uniquely, excludes inactive subscribers, and keeps all 17 LGUs canonical", async () => {

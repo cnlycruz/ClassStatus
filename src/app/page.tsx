@@ -14,7 +14,6 @@ import {
   startVisibilityAwareDashboardRefresh,
 } from "@/lib/dashboardRefresh";
 import { MapPin, Compass } from "lucide-react";
-import { SuspensionAlerts } from "@/components/SuspensionAlerts";
 
 const LguDetailPanel = dynamic(() => import("@/components/LguDetailPanel").then((module) => module.LguDetailPanel));
 const ListView = dynamic(() => import("@/components/ListView").then((module) => module.ListView));
@@ -166,7 +165,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar onOpenSchoolSearch={openSchoolSearch} />
+      <Navbar onOpenSchoolSearch={openSchoolSearch} selectedLguId={selectedLguId} />
 
       <main className="dashboard-main flex-1 mx-auto w-full max-w-7xl 2xl:max-w-[min(90vw,1920px)] px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-5 space-y-5 sm:space-y-6">
         <StatusHero
@@ -177,7 +176,6 @@ export default function HomePage() {
           onViewModeChange={setViewMode}
           onRefresh={loadData}
         />
-        <SuspensionAlerts selectedLguId={selectedLguId} />
 
         {viewMode === "map" ? (
           <div className="dashboard-map-region grid grid-cols-1 gap-5 lg:h-[46rem] lg:grid-cols-12 lg:items-stretch lg:gap-5">

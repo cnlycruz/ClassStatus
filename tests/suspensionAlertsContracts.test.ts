@@ -33,4 +33,19 @@ describe("public suspension-alert settings contracts", () => {
     expect(alerts).toContain("await upsertSubscription()");
     expect(alerts).toContain("allAlertLocations()");
   });
+
+  it("renders a viewport-fixed, portal-based dialog with bounded internal scrolling", () => {
+    const alerts = read("src", "components", "SuspensionAlerts.tsx");
+    expect(alerts).toContain('from "react-dom"');
+    expect(alerts).toContain("createPortal(");
+    expect(alerts).toContain("document.body");
+    expect(alerts).toContain("fixed inset-0 z-[100]");
+    expect(alerts).toContain("100dvh");
+    expect(alerts).toContain("safe-area-inset-top");
+    expect(alerts).toContain("safe-area-inset-bottom");
+    expect(alerts).toContain("min-h-0 flex-1 overflow-y-auto");
+    expect(alerts).toContain("flex shrink-0 flex-col-reverse");
+    expect(alerts).toContain('body.style.overflow = "hidden"');
+    expect(alerts).not.toContain("items-end justify-center bg-slate-950/60 p-3");
+  });
 });

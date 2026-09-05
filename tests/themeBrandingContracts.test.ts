@@ -7,8 +7,8 @@ const read = (...parts: string[]) => fs.readFileSync(path.join(process.cwd(), ..
 describe("theme-aware browser branding", () => {
   it("switches the navbar logo through the document dark-mode class", () => {
     const navbar = read("src", "components", "Navbar.tsx");
-    expect(navbar).toContain('src="/NEWLOGO.PNG"');
-    expect(navbar).toContain('src="/NEWLOGODARK.png"');
+    expect(navbar).toContain('src="/navbar-logo-light.png"');
+    expect(navbar).toContain('src="/navbar-logo-dark.png"');
     expect(navbar).toContain("block h-full w-full object-contain dark:hidden");
     expect(navbar).toContain("hidden h-full w-full object-contain dark:block");
     expect(navbar).not.toContain('className="block h-full w-full rounded-xl');

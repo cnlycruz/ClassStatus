@@ -39,6 +39,13 @@
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* A theme swap changes most painted colors at once; avoid animating the full page. */
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition-duration: 0s !important;
+}
+
 /* Interactive Map styling */
 .ncr-map-lgu {
   cursor: pointer;

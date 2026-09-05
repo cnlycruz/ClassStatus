@@ -69,7 +69,7 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch, selectedL
           <Link href="/" className="group flex min-h-11 min-w-0 items-center gap-2">
             <div className="relative h-8 w-8 shrink-0 transition-transform group-hover:scale-105 sm:h-9 sm:w-9">
               <Image
-                src="/NEWLOGO.PNG"
+                src="/navbar-logo-light.png"
                 alt="Class Status NCR"
                 width={36}
                 height={36}
@@ -77,7 +77,7 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch, selectedL
                 className="block h-full w-full object-contain dark:hidden"
               />
               <Image
-                src="/NEWLOGODARK.png"
+                src="/navbar-logo-dark.png"
                 alt="Class Status NCR"
                 width={36}
                 height={36}
@@ -122,6 +122,7 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch, selectedL
                 <Link
                   key={link.href}
                   href={link.href}
+                  prefetch={false}
                   className={`flex min-h-11 whitespace-nowrap items-center gap-1.5 rounded-xl px-2 py-1.5 text-xs font-medium transition-colors ${
                     isActive
                       ? "bg-blue-50 text-blue-600 dark:bg-blue-950/70 dark:text-blue-400"

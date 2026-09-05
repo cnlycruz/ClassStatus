@@ -32,9 +32,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const toggleTheme = () => {
     const next = theme === "light" ? "dark" : "light";
+    const root = document.documentElement;
+    root.classList.add("theme-switching");
     setTheme(next);
     localStorage.setItem("csncr_theme", next);
-    document.documentElement.classList.toggle("dark", next === "dark");
+    root.classList.toggle("dark", next === "dark");
+    requestAnimationFrame(() => root.classList.remove("theme-switching"));
   };
 
   return (

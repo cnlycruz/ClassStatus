@@ -14,7 +14,7 @@ uncertainty, and fail-closed behavior are more important than convenience or vis
 1. Read `docs/PROJECT_CONTEXT.md` for the current engineering state.
 2. Read `PRODUCT.md` for the product, UX, brand, and accessibility contract.
 3. Read the relevant specialist document:
-   - `PRODUCTION_CUTOVER.md` for Production, Supabase, Vercel, auth, cron, RPC, or migration work.
+   - `docs/ARCHITECTURE.md` and the current migrations for storage, Supabase, cron, or RPC work.
    - `docs/ENGINEERING_HISTORY.md` before fixing regressions or changing previously fragile areas.
    - `docs/KNOWN_ISSUES.md` before assuming an observed symptom is new or already solved.
    - `.agents/SEC-SKILL.md` for security-sensitive work.
@@ -51,7 +51,7 @@ uncertainty, and fail-closed behavior are more important than convenience or vis
 - Do not weaken admin authentication, session isolation, CSRF checks, Origin validation, request-size
   limits, RPC proof checks, namespace isolation, or least-privilege grants to make a failing request pass.
 - The hosted Production runtime must not gain a Supabase service-role/secret-key dependency merely as a
-  workaround. Follow `PRODUCTION_CUTOVER.md` and the current server/RPC architecture.
+  workaround. Follow the current server/RPC architecture and migrations.
 - Keep `/api/`, `/collector/`, and `/auth/` network-only in the service worker. Do not cache private or
   mutable application responses.
 - Production mutations, live notification sends, scheduler changes, destructive cleanup, and applying

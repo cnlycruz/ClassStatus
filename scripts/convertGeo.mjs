@@ -1,13 +1,21 @@
 import fs from "fs";
 
+// Source: faeldon/philippines-json-maps (MIT), pinned for reproducible output.
+// See THIRD_PARTY_NOTICES.md for the required copyright and license notice.
+const upstreamRevision = "8eeead560246863c8c820c31ca6fbca81a279477";
+const upstreamBaseUrl =
+  `https://raw.githubusercontent.com/faeldon/philippines-json-maps/${upstreamRevision}/2023/geojson/provdists/hires`;
 const ncrDistricts = ["1303900000", "1307400000", "1307500000", "1307600000"];
 
 async function main() {
   const results = await Promise.all(
     ncrDistricts.map((d) =>
       fetch(
-        `https://raw.githubusercontent.com/faeldon/philippines-json-maps/master/2023/geojson/provdists/hires/municities-provdist-${d}.0.1.json`
-      ).then((r) => r.json())
+        `${upstreamBaseUrl}/municities-provdist-${d}.0.1.json`
+      ).then((r) => {
+        if (!r.ok) throw new Error(`Unable to fetch NCR geometry (${r.status} ${r.statusText})`);
+        return r.json();
+      })
     )
   );
 
@@ -204,9 +212,10 @@ export interface GeoPathItem {
 }
 
 /**
- * Official High-Fidelity PSGC Geographic SVG Vector Boundaries for all 17 NCR LGUs.
- * Converted directly from Philippine Standard Geographic Code boundary polygons.
- * Caloocan North and South are discrete polygons unified under LGUId "caloocan".
+ * Derived from faeldon/philippines-json-maps at revision ${upstreamRevision} (MIT).
+ * Four NCR district GeoJSON files are projected into the 800x1000 SVG coordinate
+ * space and rounded to one decimal place. Caloocan's two polygons remain visually
+ * separate while sharing the logical LGUId "caloocan". See THIRD_PARTY_NOTICES.md.
  */
 export const NCR_GEO_PATHS: GeoPathItem[] = ${JSON.stringify(geoPaths, null, 2)};
 `;

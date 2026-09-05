@@ -116,10 +116,11 @@ describe("near-live update contracts", () => {
     expect(schedulerSql).not.toContain("cron.unschedule");
   });
 
-  it("uses Vercel's configured main Production branch without repository overrides", () => {
+  it("keeps deployment configuration out of the public repository", () => {
     expect(fs.existsSync(path.join(process.cwd(), "vercel.json"))).toBe(false);
-    const runbook = read("PRODUCTION_CUTOVER.md");
-    expect(runbook).toContain("Production Branch is `main`");
-    expect(runbook).toContain("git merge --ff-only deployment-preview");
+    expect(fs.existsSync(path.join(process.cwd(), "PRODUCTION_CUTOVER.md"))).toBe(false);
+    const architecture = read("docs", "ARCHITECTURE.md");
+    expect(architecture).toContain("No live project identifiers");
+    expect(architecture).toContain("current migrations");
   });
 });

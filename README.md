@@ -1,183 +1,64 @@
-# 🇵🇭 Class Status NCR — Metro Manila Class Suspension Tracker
+# ClassStatus NCR
 
-> **“May pasok ba?”** — Real-time interactive class suspension status and automated advisory collector for all 17 Metro Manila Local Government Units (LGUs).
+ClassStatus is an independent, near-live class-suspension tracker for Metro Manila. It helps students, families, and educators check evidence-backed advisories across all 17 NCR local government units (LGUs) while keeping sources, timing, scope, and uncertainty visible.
 
----
+> **Disclaimer:** ClassStatus is an independent project. It is not operated by, affiliated with, or endorsed by any Philippine government agency or local government unit.
 
-## 🌟 Overview & Highlights
+Official announcements from the relevant LGU, school, or education authority remain the source of truth.
 
-**Class Status NCR** is an end-to-end web application for students, parents, and educators in the National Capital Region (NCR), Philippines. It tracks evidence-backed reports from approved media sources while preserving links to the reporting article.
+## Core features
 
-### ✨ Key Features
+- Interactive, keyboard-accessible SVG map for all 17 NCR LGUs, with one logical status for Caloocan's two geographic areas.
+- Near-live dashboard updates with conservative, fail-closed status handling and visible source evidence.
+- Map and list views, status filters, LGU details, and search across 49 school/campus records.
+- Light and dark themes, responsive layouts, installable PWA support, and Web Push alert controls.
+- A protected collector/admin surface and local JSON or hosted Supabase storage adapters.
 
-1. **Interactive Geographic NCR Vector Map**:
-   - Geographically accurate vector boundaries for all **17 NCR LGUs**.
-   - Accurately renders **Caloocan's geographically separated North and South territories** while preserving unified citywide status.
-   - Smooth SVG pan & zoom (drag, mouse wheel, +/- controls, reset view).
-   - Dynamic status color coding: **Suspended** (Coral/Red), **Partial** (Amber/Orange), **Classes Continue** (Emerald/Green), and **Awaiting Info** (Slate).
-   - High-contrast, accessible keyboard navigation (`Tab`, `Enter`/`Space`) and screen-reader ARIA semantics.
+See [Architecture](docs/ARCHITECTURE.md) for a public-safe technical overview and [Third-party notices](THIRD_PARTY_NOTICES.md) for data and font attribution.
 
-2. **Automated Information Collector Engine**:
-   - Modular plug-and-play adapter architecture (`src/collector/`).
-   - Tier 3 media trackers (Rappler and GMA News) are the sole operational sources; Tier 1 and Tier 2 are hard-disabled while under development.
-   - Source-specific listing/article extraction with canonical URLs, publication metadata, and evidence excerpts.
-   - Conservative Filipino/English normalization requiring explicit LGU, date, education level, sector, and suspension action.
-   - Event-aware deduplication, conflict holds, and confidence promotion after independent corroboration.
-   - Fail-closed execution: blocked or malformed sources publish no fallback records.
-   - Standalone CLI runner: `npm run collect`.
+## Prerequisites
 
-3. **Status Lifecycle State Machine (Asia/Manila PHT)**:
-   - Evaluates: `Discovered` → `Parsed` → `Validated` → `Upcoming` → `Active` → `Expired`.
-   - **Advance Notice Support**: Announcements declared tonight for *tomorrow* immediately flag as **Upcoming Tomorrow** with distinct badges.
-   - Strict timezone locking to `Asia/Manila` (UTC+8).
+- Node.js 22.x
+- npm 10.x (the repository records the tested package-manager version)
 
-4. **School & University Instant Finder**:
-   - 50+ major NCR higher education institutions (UST, DLSU, PUP, UPD, ADMU, FEU, NU, CEU, PLM, MAPUA, CSB, San Beda, Adamson, etc.).
-   - Rich alias & acronym search dictionary with multi-campus awareness.
+## Local setup
 
-5. **Transparency & Reliability Tiers**:
-   - Dedicated `/sources` registry detailing monitored endpoints, check intervals, and reliability tiers.
-   - Dedicated `/collector` console for live sweep triggers and real-time log inspection.
-
-6. **Design & Accessibility**:
-   - Modern, student-friendly visual system with custom Tailwind color tokens.
-   - Seamless **Light & Dark mode** with system preference detection and localStorage persistence.
-   - Fully responsive on mobile phones with swipeable bottom sheets.
-
----
-
-## 🛠️ Technology Stack
-
-- **Framework**: Next.js 15 (App Router, Server & Client Components)
-- **Language**: TypeScript (Strict typing across all models)
-- **Styling**: Tailwind CSS with custom status tokens and dark theme support
-- **Icons**: Lucide React
-- **HTML Parsing / Web Scraping**: Cheerio
-- **Testing**: Vitest test suite
-
----
-
-## 📁 Clean Folder Structure
-
-```
-CSAGY/
-├── src/
-│   ├── app/
-│   │   ├── api/
-│   │   │   ├── collector/
-│   │   │   │   ├── logs/route.ts      # GET collector execution logs
-│   │   │   │   ├── run/route.ts       # POST on-demand sweep trigger
-│   │   │   │   └── sources/route.ts   # GET & PUT source feed configs
-│   │   │   ├── demo-mode/route.ts     # POST clear live Tier 3 records
-│   │   │   ├── lgus/route.ts          # GET 17 LGUs with derived status
-│   │   │   ├── schools/route.ts       # GET search schools & live status
-│   │   │   └── suspensions/route.ts   # GET records; public writes disabled
-│   │   ├── about/page.tsx             # About & methodology
-│   │   ├── collector/page.tsx         # Collector management console
-│   │   ├── sources/page.tsx           # Monitored sources transparency
-│   │   ├── globals.css                # Custom CSS tokens & map styles
-│   │   ├── layout.tsx                 # Root layout & Google Fonts
-│   │   └── page.tsx                   # Main Home map & detail panel
-│   ├── collector/
-│   │   ├── sources/
-│   │   │   ├── depedAdapter.ts        # Disabled Tier 1 placeholder
-│   │   │   ├── lguPioAdapter.ts       # Disabled Tier 1 placeholder
-│   │   │   ├── mediaAdapter.ts        # Live Tier 3 listing/article collector
-│   │   │   ├── pagasaAdapter.ts       # Disabled Tier 1 placeholder
-│   │   │   └── types.ts               # Source adapter contracts
-│   │   ├── cli.ts                     # Standalone CLI script
-│   │   ├── engine.ts                  # Orchestration, parsing & logs
-│   │   ├── lifecycle.ts               # State machine & LGU status
-│   │   ├── normalizer.ts              # Regex/NLP normalization engine
-│   │   └── storage.ts                 # Atomic persistence layer
-│   ├── components/
-│   │   ├── Footer.tsx                 # Responsive footer & disclaimer
-│   │   ├── LguDetailPanel.tsx         # Slide-out detail & share drawer
-│   │   ├── ListView.tsx               # Card & table grid view
-│   │   ├── Navbar.tsx                 # Top bar with live PHT clock
-│   │   ├── NcrInteractiveMap.tsx      # Vector SVG map with pan/zoom
-│   │   ├── SchoolFinderModal.tsx      # Autocomplete school search modal
-│   │   ├── StatusHero.tsx             # Headline banner & live metrics
-│   │   └── ThemeContext.tsx           # Light/Dark mode provider
-│   ├── data/
-│   │   ├── lgus.ts                    # 17 NCR LGU directory
-│   │   ├── ncrGeoData.ts              # Precise vector SVG geometry
-│   │   ├── schools.ts                 # 50+ universities & aliases
-│   │   └── sources.ts                 # Monitored sources registry
-│   ├── types/
-│   │   └── index.ts                   # Complete TypeScript definitions
-│   └── utils/
-│       └── philippineTime.ts          # Asia/Manila timezone helpers
-├── tests/
-│   ├── collector.test.ts              # Policy, engine, storage & API flow
-│   ├── mediaAdapter.test.ts           # Outlet HTML fixture extraction
-│   ├── lifecycle.test.ts              # State transitions & PHT tests
-│   ├── normalizer.test.ts             # Multilingual regex & safeguards
-│   └── schools.test.ts                # School dataset & campus tests
-├── package.json
-├── tailwind.config.ts
-├── tsconfig.json
-└── vitest.config.ts
-```
-
----
-
-## 🚀 Getting Started
-
-### 0. One-Click Quick Launch (PowerShell)
-You can start the dev server and automatically launch the browser in a single step:
-```powershell
-.\run-local.ps1
-```
-
-### 1. Install Dependencies
 ```bash
-npm install
+git clone https://github.com/cnlycruz/ClassStatus.git
+cd ClassStatus
+npm ci
 ```
 
-### 2. Run the Web Application
+Copy `.env.example` to `.env.local`, keep the default `local-json` storage driver, and fill only the variables needed for your local workflow. Never commit `.env.local` or real credentials.
+
+Start the development server:
+
 ```bash
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### 3. Run the Automated Collector (CLI)
-You can trigger the automated information collector directly from your terminal:
+Open [http://localhost:3000](http://localhost:3000). Generated local state is written to `CLASSSTATUS_DATA_DIR` (default: `./data`) and is ignored by Git.
+
+## Development commands
+
 ```bash
-npm run collect
+npm run dev                 # development server
+npm run collect             # run eligible local collector adapters
+npx tsc --noEmit            # TypeScript validation
+npm run lint                # ESLint
+npm test                    # Vitest test suite
+npm run build               # production build
+npm start                   # serve the production build
 ```
-This executes eligible Tier 3 adapters, normalizes explicit LGU announcements, updates deduplicated live records, and logs source failures or rejected/held statements. It never produces fallback announcements.
 
-### 4. Run the Test Suite
-Execute the full test suite with Vitest:
-```bash
-npm test
-```
+Administrator access, hosted storage, scheduled collection, and Web Push are optional. Their variables are grouped and documented with placeholders in [.env.example](.env.example). Do not use real production values in issues, pull requests, fixtures, or screenshots.
 
----
+## Contributing and security
 
-## 🔧 Developer Guides
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. Report suspected vulnerabilities privately using the instructions in [SECURITY.md](SECURITY.md); do not open a public security issue.
 
-### Production Operations
+Data corrections must include a verifiable official source. ClassStatus intentionally does not infer or fabricate suspension declarations.
 
-Production uses authenticated Supabase administrator sessions and narrowly
-scoped signed collector RPCs with the publishable key. The hosted application
-does not require a Supabase secret/service-role key. See
-[`PRODUCTION_CUTOVER.md`](PRODUCTION_CUTOVER.md) for the two-migration launch,
-verification, Preview retirement, and rollback procedure.
+## License and attribution
 
-### How to Add a New Collector Source
-1. Open `src/data/sources.ts`.
-2. Add the source with an explicit `operationalState`. Only approved Tier 3 `news-reputable` entries are eligible for live collection.
-3. Add a domain-restricted media profile and fixture coverage for its listing and article markup. Tier 1/2 entries remain non-operational until the central policy is deliberately changed.
-
-### How to Update Geographic Boundaries
-1. Open `src/data/ncrGeoData.ts`.
-2. Edit the SVG path `d` attribute, `labelX`/`labelY` coordinates, or `badgeX`/`badgeY` anchor points.
-3. For split LGUs (like Caloocan North and Caloocan South), keep the same `lguId: "caloocan"` so both polygons highlight together.
-
----
-
-## ⚖️ Legal & Attribution Disclaimer
-
-Class Status NCR is an open, independent public utility created for Filipino students and educators. Official declarations issued directly by respective Local Government Units, City Mayors, the Department of Education (DepEd), and individual university administrations remain the ultimate legal authority on class attendance.
+ClassStatus source code is available under the [MIT License](LICENSE). Geographic data, fonts, and other third-party material retain their own notices and licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -1,0 +1,63 @@
+name: Data correction
+description: Report an LGU, school, source, or class-status data problem with evidence.
+title: "[Data correction]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A GitHub issue does not change a public status by itself. Corrections require verifiable evidence, preferably an official announcement from the relevant LGU, school, or education authority. Do not submit personal data or private messages.
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - LGU status or scope
+        - School or campus record
+        - Source or attribution
+        - Map geography or label
+        - Other public data
+    validations:
+      required: true
+  - type: input
+    id: subject
+    attributes:
+      label: Affected LGU, school, or record
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current ClassStatus information
+      description: Describe what ClassStatus currently shows. Do not paste private collector or administrator data.
+    validations:
+      required: true
+  - type: textarea
+    id: correction
+    attributes:
+      label: Proposed correction
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Public evidence URL
+      description: Link directly to the official announcement or another verifiable public source.
+    validations:
+      required: true
+  - type: input
+    id: effective_time
+    attributes:
+      label: Effective date and time
+      description: Use Philippine time and include the affected class date when known.
+      placeholder: 2026-09-05 06:00 PHT, affecting classes on 2026-09-05
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: The evidence is publicly accessible and I have not included personal data or credentials.
+          required: true
+        - label: I understand that ambiguous or unverified claims will not be published as a confirmed suspension.
+          required: true

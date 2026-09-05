@@ -13,9 +13,11 @@ export interface GeoPathItem {
 }
 
 /**
- * Official High-Fidelity PSGC Geographic SVG Vector Boundaries for all 17 NCR LGUs.
- * Converted directly from Philippine Standard Geographic Code boundary polygons.
- * Caloocan North and South are discrete polygons unified under LGUId "caloocan".
+ * Derived from faeldon/philippines-json-maps at revision
+ * 8eeead560246863c8c820c31ca6fbca81a279477 (MIT).
+ * Four NCR district GeoJSON files are projected into an 800x1000 SVG coordinate
+ * space and rounded to one decimal place. Caloocan's two polygons remain visually
+ * separate while sharing the logical LGUId "caloocan". See THIRD_PARTY_NOTICES.md.
  */
 export const NCR_GEO_PATHS: GeoPathItem[] = [
   {

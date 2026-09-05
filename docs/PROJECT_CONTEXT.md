@@ -50,9 +50,8 @@ The repository supports both local JSON and Supabase-backed storage, but they ha
   hosted application runtime.
 - Scheduled collector execution and its authorization/lease behavior are part of the Production architecture.
 
-For Production-specific details, environment boundaries, scheduler behavior, rollback constraints, and RPC
-security, read `PRODUCTION_CUTOVER.md` and inspect the latest migrations/code rather than copying old setup
-commands from chat history.
+For public-safe architecture and environment boundaries, read `docs/ARCHITECTURE.md`. For deployment or RPC
+work, inspect the current code and migrations rather than copying old setup commands from chat history.
 
 ## 4. Public dashboard behavior
 
@@ -207,9 +206,6 @@ Use targeted Vitest runs while iterating, then run the full relevant gates befor
 For database/runtime changes, local green tests are necessary but not sufficient evidence that Production is
 healthy.
 
-The repo also has UI/Impeccable hooks under `.codex/hooks.json` and `.agents/skills/impeccable/`. Do not delete
-or bypass them just to make a visual change easier.
-
 ## 12. Source-of-truth order
 
 When investigating a question, use this order:
@@ -218,7 +214,7 @@ When investigating a question, use this order:
 2. current migrations/schema contracts;
 3. this `PROJECT_CONTEXT.md` for durable project state;
 4. `PRODUCT.md` for product/UX intent;
-5. `PRODUCTION_CUTOVER.md` for Production operations/security architecture;
+5. `docs/ARCHITECTURE.md` for public-safe architecture and environment boundaries;
 6. `ENGINEERING_HISTORY.md` for past incidents and why decisions exist;
 7. `KNOWN_ISSUES.md` for unresolved or verification-needed items;
 8. old chat messages only as historical evidence, never as stronger truth than current code/Production evidence.

@@ -61,6 +61,14 @@ export function hasNcrMapGestureMoved(start: MapPoint, current: MapPoint): boole
   return Math.hypot(current.x - start.x, current.y - start.y) > NCR_MAP_DRAG_THRESHOLD;
 }
 
+export function shouldCaptureNcrMapPointer(input: {
+  pointerCount: number;
+  start: MapPoint;
+  current: MapPoint;
+}): boolean {
+  return input.pointerCount > 1 || hasNcrMapGestureMoved(input.start, input.current);
+}
+
 export function shouldActivateNcrMapTarget(gesture: { hasMoved: boolean; hasPinched: boolean }): boolean {
   return !gesture.hasMoved && !gesture.hasPinched;
 }

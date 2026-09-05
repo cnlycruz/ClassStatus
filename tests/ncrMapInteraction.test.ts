@@ -12,6 +12,7 @@ import {
   ncrMapSvgTransform,
   ncrPinchView,
   scalePointAroundAnchor,
+  shouldCaptureNcrMapPointer,
   shouldActivateNcrMapTarget,
 } from "@/lib/ncrMapInteraction";
 
@@ -92,6 +93,21 @@ describe("NCR map viewport interaction", () => {
     expect(shouldActivateNcrMapTarget({ hasMoved: false, hasPinched: true })).toBe(false);
   });
 
+  it("keeps pointer capture out of Windows-Chromium-like clicks while capturing real pans and pinches", () => {
+    const start = { x: 120, y: 200 };
+
+    // Mouse/touch pointerdown and pointerup on an LGU have no movement, so the
+    // SVG path or label remains the click target and can activate normally.
+    expect(shouldCaptureNcrMapPointer({ pointerCount: 1, start, current: start })).toBe(false);
+    expect(shouldCaptureNcrMapPointer({ pointerCount: 1, start, current: { x: 128, y: 200 } })).toBe(false);
+    expect(shouldActivateNcrMapTarget({ hasMoved: false, hasPinched: false })).toBe(true);
+
+    // A drag crosses the existing threshold; a second active pointer is a pinch.
+    expect(shouldCaptureNcrMapPointer({ pointerCount: 1, start, current: { x: 129, y: 200 } })).toBe(true);
+    expect(shouldCaptureNcrMapPointer({ pointerCount: 2, start, current: start })).toBe(true);
+    expect(shouldActivateNcrMapTarget({ hasMoved: true, hasPinched: false })).toBe(false);
+  });
+
   it("keeps the pinch midpoint anchored and clamps its scale", () => {
     expect(ncrPinchView({
       startView: initialNcrMapView(),
@@ -123,6 +139,7 @@ describe("NCR map viewport interaction", () => {
     expect(componentSource).toContain('textRendering="geometricPrecision"');
     expect(componentSource).toContain("renderedLabelScaleRef.current === scale");
     expect(componentSource).toContain("requestAnimationFrame");
+    expect(componentSource).toContain("shouldCaptureNcrMapPointer");
     expect(componentSource).toContain("setPointerCapture");
     expect(componentSource).toContain("onPointerCancel");
   });
@@ -132,5 +149,22 @@ describe("NCR map viewport interaction", () => {
     expect(componentSource).toContain("e.preventDefault()");
     expect(componentSource.match(/shouldActivateNcrMapTarget\(gestureRef\.current\)/g)).toHaveLength(2);
     expect(componentSource).toContain("shouldActivateNcrMapTarget(gesture)");
+  });
+
+  it("does not immediately capture a simple LGU or label click", () => {
+    const pointerDown = componentSource.slice(
+      componentSource.indexOf("const handlePointerDown"),
+      componentSource.indexOf("const handlePointerMove")
+    );
+    const pointerMove = componentSource.slice(
+      componentSource.indexOf("const handlePointerMove"),
+      componentSource.indexOf("const finishPointer")
+    );
+
+    expect(pointerDown).not.toContain("setPointerCapture(event.pointerId)");
+    expect(pointerMove).toContain("shouldCaptureNcrMapPointer");
+    expect(pointerMove).toContain("setPointerCapture(event.pointerId)");
+    expect(componentSource.match(/onSelectLgu\(pathItem\.lguId\)/g)).toHaveLength(3);
+    expect(componentSource).toContain("onClearSelection()");
   });
 });

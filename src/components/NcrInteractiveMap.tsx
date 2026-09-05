@@ -9,12 +9,12 @@ import {
   MapPoint,
   NcrMapView,
   clampNcrMapScale,
-  hasNcrMapGestureMoved,
   initialNcrMapView,
   ncrLabelAnchorTransform,
   NCR_MAP_BASE_VIEWBOX,
   ncrMapSvgTransform,
   ncrPinchView,
+  shouldCaptureNcrMapPointer,
   shouldActivateNcrMapTarget,
 } from "@/lib/ncrMapInteraction";
 import {
@@ -54,6 +54,7 @@ type MapGesture = {
   pinchStartView: NcrMapView;
   hasMoved: boolean;
   hasPinched: boolean;
+  capturedPointers: Set<number>;
 };
 
 function pointDistance(first: MapPoint, second: MapPoint): number {
@@ -77,6 +78,7 @@ function createMapGesture(): MapGesture {
     pinchStartView: initialView,
     hasMoved: false,
     hasPinched: false,
+    capturedPointers: new Set(),
   };
 }
 
@@ -251,7 +253,6 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
 
     const point = { x: event.clientX, y: event.clientY };
     const gesture = gestureRef.current;
-    event.currentTarget.setPointerCapture(event.pointerId);
     gesture.pointers.set(event.pointerId, point);
 
     if (gesture.pointers.size === 1) {
@@ -264,6 +265,10 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
       gesture.hasMoved = false;
       gesture.hasPinched = false;
     } else if (gesture.pointers.size === 2) {
+      gesture.pointers.forEach((_point, pointerId) => {
+        event.currentTarget.setPointerCapture(pointerId);
+        gesture.capturedPointers.add(pointerId);
+      });
       beginPinch();
     }
   }, [beginPinch]);
@@ -277,7 +282,19 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
     gesture.pointers.set(event.pointerId, point);
 
     if (gesture.mode === "pan" && gesture.pointers.size === 1) {
-      if (hasNcrMapGestureMoved(gesture.startPoint, point)) gesture.hasMoved = true;
+      if (!shouldCaptureNcrMapPointer({
+        pointerCount: gesture.pointers.size,
+        start: gesture.startPoint,
+        current: point,
+      })) {
+        return;
+      }
+
+      gesture.hasMoved = true;
+      if (!gesture.capturedPointers.has(event.pointerId)) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        gesture.capturedPointers.add(event.pointerId);
+      }
       scheduleView({
         scale: viewRef.current.scale,
         pan: {
@@ -310,6 +327,7 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    gesture.capturedPointers.delete(event.pointerId);
 
     if (gesture.pointers.size >= 2) {
       beginPinch();

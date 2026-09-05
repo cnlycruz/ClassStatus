@@ -24,6 +24,7 @@ describe("PWA contracts", () => {
       "class-status-apple-touch-icon.png",
       "class-status-icon-192.png",
       "class-status-icon-512.png",
+      "class-status-notification-badge.png",
     ]) {
       expect(fs.existsSync(path.join(process.cwd(), "public", "icons", icon))).toBe(true);
     }
@@ -31,6 +32,11 @@ describe("PWA contracts", () => {
     const darkFavicon = fs.readFileSync(path.join(process.cwd(), "public", "icons", "class-status-favicon-dark.png"));
     expect(darkFavicon.readUInt32BE(16)).toBe(32);
     expect(darkFavicon.readUInt32BE(20)).toBe(32);
+    for (const [icon, dimension] of [["class-status-icon-192.png", 192], ["class-status-icon-512.png", 512], ["class-status-apple-touch-icon.png", 180], ["class-status-notification-badge.png", 192]] as const) {
+      const image = fs.readFileSync(path.join(process.cwd(), "public", "icons", icon));
+      expect(image.readUInt32BE(16)).toBe(dimension);
+      expect(image.readUInt32BE(20)).toBe(dimension);
+    }
   });
 
   it("registers a browser-only service worker with static-only caching", () => {
@@ -49,7 +55,11 @@ describe("PWA contracts", () => {
     expect(worker).toContain('url.pathname.startsWith("/_next/static/")');
     expect(worker).toContain('NETWORK_ONLY_PREFIXES = ["/api/", "/collector/", "/auth/"]');
     expect(worker).toContain('"/icons/class-status-favicon-dark.png"');
-    expect(worker).not.toContain('"/LOGODARK.png"');
+    expect(worker).toContain('const STATIC_CACHE_NAME = `${STATIC_CACHE_PREFIX}v2`;');
+    expect(worker).toContain('icon: "/icons/class-status-icon-192.png"');
+    expect(worker).toContain('badge: "/icons/class-status-notification-badge.png"');
+    expect(worker).not.toContain('"/NEWLOGO.PNG"');
+    expect(worker).not.toContain('"/NEWLOGODARK.png"');
     expect(worker).not.toContain('caches.match(event.request)');
     expect(worker).toContain('self.addEventListener("push"');
     expect(worker).toContain("showNotification(title");

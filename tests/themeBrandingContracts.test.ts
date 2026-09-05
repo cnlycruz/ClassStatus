@@ -5,25 +5,29 @@ import { describe, expect, it } from "vitest";
 const read = (...parts: string[]) => fs.readFileSync(path.join(process.cwd(), ...parts), "utf8");
 
 describe("theme-aware browser branding", () => {
-  it("switches the navbar logo from the resolved app theme", () => {
+  it("switches the navbar logo through the document dark-mode class", () => {
     const navbar = read("src", "components", "Navbar.tsx");
-    expect(navbar).toContain('theme === "dark" ? "/LOGODARK.png" : "/LOGO.PNG"');
+    expect(navbar).toContain('src="/NEWLOGO.PNG"');
+    expect(navbar).toContain('src="/NEWLOGODARK.png"');
+    expect(navbar).toContain("block h-full w-full rounded-xl object-contain dark:hidden");
+    expect(navbar).toContain("hidden h-full w-full rounded-xl object-contain dark:block");
+    expect(navbar).not.toContain('src={theme === "dark" ? "/LOGODARK.png" : "/LOGO.PNG"}');
   });
 
-  it("uses the original light logo in the server-rendered NCR share card", () => {
+  it("uses the high-contrast new dark logo in the server-rendered NCR share card", () => {
     const route = read("src", "app", "api", "share", "ncr", "route.ts");
-    expect(route).toContain('readFile(join(process.cwd(), "public", "LOGO.PNG"))');
-    expect(route).not.toContain('readFile(join(process.cwd(), "public", "LOGODARK.png"))');
+    expect(route).toContain('readFile(join(process.cwd(), "public", "NEWLOGODARK.png"))');
+    expect(route).not.toContain('readFile(join(process.cwd(), "public", "NEWLOGO.PNG"))');
     expect(route).not.toContain('readFile(join(process.cwd(), "public", "icons", "class-status-icon-192.png"))');
   });
 
-  it("updates one metadata favicon link for both explicit theme assets", () => {
-    const favicon = read("src", "components", "ThemeFavicon.tsx");
-    expect(favicon).toContain('const LIGHT_FAVICON = "/icons/class-status-favicon.png"');
-    expect(favicon).toContain('const DARK_FAVICON = "/icons/class-status-favicon-dark.png"');
-    expect(favicon).toContain('link[rel="icon"][sizes="32x32"]');
-    expect(favicon).toContain("existingFavicon.href = href");
-    expect(favicon).toContain("document.head.appendChild(favicon)");
+  it("uses metadata media descriptors for the light and dark favicon assets", () => {
+    const layout = read("src", "app", "layout.tsx");
+    expect(layout).toContain('url: "/icons/class-status-favicon.png"');
+    expect(layout).toContain('url: "/icons/class-status-favicon-dark.png"');
+    expect(layout).toContain('media: "(prefers-color-scheme: light)"');
+    expect(layout).toContain('media: "(prefers-color-scheme: dark)"');
+    expect(layout).not.toContain("ThemeFavicon");
   });
 
   it("keeps installed-app icon metadata on the fixed light asset set", () => {

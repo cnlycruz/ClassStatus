@@ -16,7 +16,7 @@ export const revalidate = 0;
 
 async function loadShareAssets(): Promise<{ logoDataUrl: string; interRegular: ArrayBuffer; interBold: ArrayBuffer }> {
   const [logo, interRegular, interBold] = await Promise.all([
-    readFile(join(process.cwd(), "public", "LOGO.PNG")),
+    readFile(join(process.cwd(), "public", "NEWLOGODARK.png")),
     readFile(join(process.cwd(), "public", "fonts", "Inter-Regular.ttf")),
     readFile(join(process.cwd(), "public", "fonts", "Inter-Bold.ttf")),
   ]);

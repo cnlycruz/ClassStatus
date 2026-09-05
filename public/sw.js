@@ -1,11 +1,12 @@
 const STATIC_CACHE_PREFIX = "class-status-static-";
-const STATIC_CACHE_NAME = `${STATIC_CACHE_PREFIX}v1`;
+const STATIC_CACHE_NAME = `${STATIC_CACHE_PREFIX}v2`;
 const STATIC_ICON_PATHS = new Set([
   "/icons/class-status-favicon.png",
   "/icons/class-status-favicon-dark.png",
   "/icons/class-status-apple-touch-icon.png",
   "/icons/class-status-icon-192.png",
   "/icons/class-status-icon-512.png",
+  "/icons/class-status-notification-badge.png",
 ]);
 const NETWORK_ONLY_PREFIXES = ["/api/", "/collector/", "/auth/"];
 
@@ -67,7 +68,7 @@ self.addEventListener("push", (event) => {
     tag,
     data: { url },
     icon: "/icons/class-status-icon-192.png",
-    badge: "/icons/class-status-icon-192.png",
+    badge: "/icons/class-status-notification-badge.png",
   }));
 });
 

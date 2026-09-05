@@ -32,7 +32,7 @@ Preserve the ClassStatus NCR name, existing logo treatment, colors, status color
 
 ## Evidence on Hand
 
-The repository contains the current ClassStatus NCR implementation, logo at `LOGO.PNG`, interactive NCR geometry, source registry, collector architecture, clean live storage, and automated fixture tests. No formal seals or additional official brand assets are required.
+The repository contains the current ClassStatus NCR implementation, visible logo assets at `NEWLOGO.PNG` and `NEWLOGODARK.png`, interactive NCR geometry, source registry, collector architecture, clean live storage, and automated fixture tests. No formal seals or additional official brand assets are required.
 
 ## Product Principles
 

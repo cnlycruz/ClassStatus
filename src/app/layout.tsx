@@ -3,7 +3,6 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import { ThemeProvider } from "@/components/ThemeContext";
-import { ThemeFavicon } from "@/components/ThemeFavicon";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -31,6 +30,18 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: "/icons/class-status-favicon.png", sizes: "32x32", type: "image/png" },
+      {
+        url: "/icons/class-status-favicon.png",
+        sizes: "32x32",
+        type: "image/png",
+        media: "(prefers-color-scheme: light)",
+      },
+      {
+        url: "/icons/class-status-favicon-dark.png",
+        sizes: "32x32",
+        type: "image/png",
+        media: "(prefers-color-scheme: dark)",
+      },
       { url: "/icons/class-status-icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icons/class-status-icon-512.png", sizes: "512x512", type: "image/png" },
     ],
@@ -67,7 +78,6 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className={inter.variable}>
       <body className="min-h-screen flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased selection:bg-blue-500 selection:text-white transition-colors duration-200">
         <ThemeProvider>
-          <ThemeFavicon />
           {children}
           <ServiceWorkerRegistration />
         </ThemeProvider>

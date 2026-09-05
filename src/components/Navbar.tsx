@@ -69,12 +69,20 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch, selectedL
           <Link href="/" className="group flex min-h-11 min-w-0 items-center gap-2">
             <div className="relative h-8 w-8 shrink-0 transition-transform group-hover:scale-105 sm:h-9 sm:w-9">
               <Image
-                src={theme === "dark" ? "/LOGODARK.png" : "/LOGO.PNG"}
+                src="/NEWLOGO.PNG"
                 alt="Class Status NCR"
                 width={36}
                 height={36}
                 priority
-                className="h-full w-full rounded-xl object-contain"
+                className="block h-full w-full rounded-xl object-contain dark:hidden"
+              />
+              <Image
+                src="/NEWLOGODARK.png"
+                alt="Class Status NCR"
+                width={36}
+                height={36}
+                priority
+                className="hidden h-full w-full rounded-xl object-contain dark:block"
               />
               <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5 sm:h-3 sm:w-3">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>

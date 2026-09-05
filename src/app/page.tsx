@@ -18,6 +18,7 @@ import { MapPin, Compass } from "lucide-react";
 const LguDetailPanel = dynamic(() => import("@/components/LguDetailPanel").then((module) => module.LguDetailPanel));
 const ListView = dynamic(() => import("@/components/ListView").then((module) => module.ListView));
 const SchoolFinderModal = dynamic(() => import("@/components/SchoolFinderModal").then((module) => module.SchoolFinderModal), { ssr: false });
+const InstallPrompt = dynamic(() => import("@/components/InstallPrompt").then((module) => module.InstallPrompt), { ssr: false });
 
 function reportLguView(id: LGUId | null) {
   window.dispatchEvent(new CustomEvent("classstatus:lgu-view", { detail: { lguId: id } }));
@@ -229,6 +230,8 @@ export default function HomePage() {
           onSelectLguFromSchool={selectLguFromSchool}
         />
       )}
+
+      <InstallPrompt />
 
       <Footer />
     </div>

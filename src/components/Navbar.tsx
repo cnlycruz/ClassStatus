@@ -17,7 +17,9 @@ import {
   Info,
   Menu,
   X,
+  Download,
 } from "lucide-react";
+import { useInstallState } from "./InstallProvider";
 
 let philippineTimeFormatter: Intl.DateTimeFormat | undefined;
 
@@ -58,6 +60,7 @@ function PhilippineTime({ fallback }: { fallback: string }) {
 export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch, selectedLguId }: { onOpenSchoolSearch?: () => void; selectedLguId?: LGUId | null }) {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
+  const installState = useInstallState();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const showsPublicAlerts = !pathname.startsWith("/collector") && !pathname.startsWith("/auth");
 
@@ -207,6 +210,22 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch, selectedL
               </Link>
             );
           })}
+
+          {installState.ready && !installState.installed && (
+            <Link
+              href="/install"
+              prefetch={false}
+              onClick={() => setMobileMenuOpen(false)}
+              className={`flex min-h-11 items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-semibold transition-colors ${
+                pathname === "/install"
+                  ? "bg-blue-50 text-blue-600 dark:bg-blue-950/70 dark:text-blue-400"
+                  : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+              }`}
+            >
+              <Download className="h-4 w-4 text-slate-400" />
+              <span>Install ClassStatus</span>
+            </Link>
+          )}
         </div>
       )}
     </header>

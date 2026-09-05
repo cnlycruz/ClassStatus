@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import { ThemeProvider } from "@/components/ThemeContext";
+import { InstallProvider } from "@/components/InstallProvider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -78,8 +79,10 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className={inter.variable}>
       <body className="min-h-screen flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased selection:bg-blue-500 selection:text-white transition-colors duration-200">
         <ThemeProvider>
-          {children}
-          <ServiceWorkerRegistration />
+          <InstallProvider>
+            {children}
+            <ServiceWorkerRegistration />
+          </InstallProvider>
         </ThemeProvider>
       </body>
     </html>

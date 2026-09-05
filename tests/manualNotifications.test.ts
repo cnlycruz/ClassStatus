@@ -8,7 +8,7 @@ import { POST as sendManualNotification } from "@/app/api/admin/notifications/ro
 import { POST as previewManualNotification } from "@/app/api/admin/notifications/preview/route";
 import { sendAdminNotification } from "@/lib/admin/notifications";
 import { dispatchPendingPushNotifications, notificationPayload } from "@/lib/notifications/dispatch";
-import { createManualBroadcast, createNotificationEvent, deactivatePushSubscription, listManualBroadcastHistory, previewManualBroadcast, savePushSubscription } from "@/lib/notifications/storage";
+import { createManualBroadcast, createNotificationEvent, deactivatePushSubscription, listManualBroadcastHistory, listPendingPushDeliveries, previewManualBroadcast, savePushSubscription } from "@/lib/notifications/storage";
 import type { LGUId, SuspensionRecord } from "@/types";
 
 let directory = "";
@@ -49,6 +49,21 @@ describe("protected manual custom notifications", () => {
     expect(notificationPayload(broadcast.event)).toMatchObject({ title: "Class Status", body: "Waiting pa rin sa suspension no?" });
     expect(notificationPayload(broadcast.event).body).not.toContain("from Class Status");
     expect(notificationPayload(broadcast.event).body).not.toContain("Announcement");
+  });
+
+  it("preserves the manual message through the pending outbox shape and retries", async () => {
+    await savePushSubscription({ endpoint: "https://push.test/caloocan", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan"] });
+    await createManualBroadcast(input({ message: "  Waiting pa rin sa suspension no?  " }));
+
+    const [pending] = await listPendingPushDeliveries();
+    expect(pending.event).toMatchObject({ kind: "manual", title: "Class Status", message: "Waiting pa rin sa suspension no?" });
+    expect(notificationPayload(pending.event)).toMatchObject({ title: "Class Status", body: "Waiting pa rin sa suspension no?" });
+
+    const deliveredBodies: string[] = [];
+    await dispatchPendingPushNotifications(async (_delivery, payload) => { deliveredBodies.push(payload.body); throw new Error("network"); });
+    vi.advanceTimersByTime(60_000);
+    await dispatchPendingPushNotifications(async (_delivery, payload) => { deliveredBodies.push(payload.body); });
+    expect(deliveredBodies).toEqual(["Waiting pa rin sa suspension no?", "Waiting pa rin sa suspension no?"]);
   });
 
   it("keeps the authoritative send path available independently of recipient preview", async () => {
@@ -97,5 +112,17 @@ describe("protected manual custom notifications", () => {
     await createManualBroadcast(input()); await createNotificationEvent(automaticRecord());
     const history = await listManualBroadcastHistory();
     expect(history).toHaveLength(1); expect(document().events.map((event) => event.kind)).toEqual(expect.arrayContaining(["manual", "initial"]));
+  });
+
+  it("projects manual fields from the private Supabase pending-delivery RPC", () => {
+    const migration = fs.readFileSync(path.join(process.cwd(), "supabase", "migrations", "20260905110000_add_manual_notification_pending_event_fields.sql"), "utf8");
+    expect(migration).toContain("create or replace function classstatus_private.notification_store");
+    expect(migration).toContain("'title', event.title");
+    expect(migration).toContain("'message', event.message");
+    expect(migration).toContain("'recipientMode', event.recipient_mode");
+    expect(migration).toContain("'targetLguIds', event.target_lgu_ids");
+    expect(migration).toContain("'recipientCount', event.recipient_count");
+    expect(migration).toContain("'manualRequestKey', event.request_key");
+    expect(migration).not.toContain("create function public.");
   });
 });

@@ -51,15 +51,20 @@ describe("public responsive UI contracts", () => {
     expect(map).not.toContain("sm:h-8 sm:w-8");
   });
 
-  it("uses one stable desktop map height instead of fitting the dashboard to the viewport", () => {
+  it("uses a taller responsive desktop map region without platform detection", () => {
     const page = read("src", "app", "page.tsx");
     const globals = read("src", "app", "globals.css");
+    const map = read("src", "components", "NcrInteractiveMap.tsx");
 
-    expect(page).toContain("lg:h-[46rem]");
+    expect(page).toContain("lg:h-[clamp(52rem,84dvh,56rem)]");
+    expect(page).not.toContain("lg:h-[46rem]");
     expect(page).not.toContain("calc(100dvh-20rem)");
     expect(globals).not.toContain("calc(100dvh - 13rem)");
     expect(globals).not.toContain("height: min(31.5rem");
     expect(globals).not.toMatch(/\.lgu-detail-body\s*\{[^}]*overflow-y:\s*auto/s);
+    expect(`${page}\n${map}`).not.toMatch(
+      /navigator\.(?:userAgent|platform)|userAgent|Windows/i,
+    );
   });
 
   it("keeps the footer aligned with the dashboard's wide desktop container and corrected brand name", () => {

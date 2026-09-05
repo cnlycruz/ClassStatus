@@ -178,7 +178,7 @@ export default function HomePage() {
         />
 
         {viewMode === "map" ? (
-          <div className="dashboard-map-region grid grid-cols-1 gap-5 lg:h-[46rem] lg:grid-cols-12 lg:items-stretch lg:gap-5">
+          <div className="dashboard-map-region grid grid-cols-1 gap-5 lg:h-[clamp(52rem,84dvh,56rem)] lg:grid-cols-12 lg:items-stretch lg:gap-5">
             <div className="lg:col-span-8 flex flex-col gap-2.5 lg:h-full lg:min-h-0">
               <div className="flex items-center px-1 text-xs text-slate-500 dark:text-slate-400">
                 <span className="flex items-center gap-1.5 font-medium">

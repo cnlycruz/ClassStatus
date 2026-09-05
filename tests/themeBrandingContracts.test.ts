@@ -9,8 +9,10 @@ describe("theme-aware browser branding", () => {
     const navbar = read("src", "components", "Navbar.tsx");
     expect(navbar).toContain('src="/NEWLOGO.PNG"');
     expect(navbar).toContain('src="/NEWLOGODARK.png"');
-    expect(navbar).toContain("block h-full w-full rounded-xl object-contain dark:hidden");
-    expect(navbar).toContain("hidden h-full w-full rounded-xl object-contain dark:block");
+    expect(navbar).toContain("block h-full w-full object-contain dark:hidden");
+    expect(navbar).toContain("hidden h-full w-full object-contain dark:block");
+    expect(navbar).not.toContain('className="block h-full w-full rounded-xl');
+    expect(navbar).not.toContain('className="hidden h-full w-full rounded-xl');
     expect(navbar).not.toContain('src={theme === "dark" ? "/LOGODARK.png" : "/LOGO.PNG"}');
   });
 

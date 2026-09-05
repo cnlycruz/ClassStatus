@@ -74,7 +74,7 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch, selectedL
                 width={36}
                 height={36}
                 priority
-                className="block h-full w-full rounded-xl object-contain dark:hidden"
+                className="block h-full w-full object-contain dark:hidden"
               />
               <Image
                 src="/NEWLOGODARK.png"
@@ -82,7 +82,7 @@ export const Navbar = React.memo(function Navbar({ onOpenSchoolSearch, selectedL
                 width={36}
                 height={36}
                 priority
-                className="hidden h-full w-full rounded-xl object-contain dark:block"
+                className="hidden h-full w-full object-contain dark:block"
               />
               <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5 sm:h-3 sm:w-3">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>

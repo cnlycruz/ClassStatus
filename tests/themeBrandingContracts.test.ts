@@ -23,8 +23,9 @@ describe("theme-aware browser branding", () => {
 
   it("uses metadata media descriptors for the light and dark favicon assets", () => {
     const layout = read("src", "app", "layout.tsx");
-    expect(layout).toContain('url: "/icons/class-status-favicon.png"');
-    expect(layout).toContain('url: "/icons/class-status-favicon-dark.png"');
+    expect(layout).toContain('url: "/favicon.ico?v=3"');
+    expect(layout).toContain('url: "/favicon-32x32.png?v=3"');
+    expect(layout).toContain('url: "/favicon-dark-32x32.png?v=3"');
     expect(layout).toContain('media: "(prefers-color-scheme: light)"');
     expect(layout).toContain('media: "(prefers-color-scheme: dark)"');
     expect(layout).not.toContain("ThemeFavicon");

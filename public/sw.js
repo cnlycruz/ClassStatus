@@ -1,5 +1,5 @@
 const STATIC_CACHE_PREFIX = "class-status-static-";
-const STATIC_CACHE_NAME = `${STATIC_CACHE_PREFIX}v2`;
+const STATIC_CACHE_NAME = `${STATIC_CACHE_PREFIX}v3`;
 const STATIC_ICON_PATHS = new Set([
   "/icons/class-status-favicon.png",
   "/icons/class-status-favicon-dark.png",
@@ -67,7 +67,7 @@ self.addEventListener("push", (event) => {
     body,
     tag,
     data: { url },
-    icon: "/icons/class-status-icon-192.png",
+    icon: "/icons/class-status-icon-192.png?v=3",
     badge: "/icons/class-status-notification-badge.png",
   }));
 });

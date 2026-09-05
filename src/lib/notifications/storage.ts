@@ -8,6 +8,7 @@ import type { DeploymentNamespace } from "@/lib/storage";
 import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
 import { manualNotificationStoreRpc, notificationStoreRpc } from "./supabaseRpc";
 import { notificationFamilyFingerprint, notificationFingerprint } from "./fingerprint";
+import { validatePushSubscription } from "./subscriptionValidation";
 import type { ManualBroadcastHistoryEntry, NotificationDelivery, NotificationEvent, NotificationEventKind, PendingPushDelivery, PushSubscriptionRecord } from "./types";
 
 interface LocalNotificationDocument {
@@ -62,6 +63,9 @@ function cleanLguIds(ids: LGUId[]): LGUId[] {
 }
 
 export async function savePushSubscription(input: { endpoint: string; p256dh: string; auth: string; lguIds: LGUId[] }): Promise<PushSubscriptionRecord> {
+  // This is the shared persistence boundary, not only an HTTP-route concern.
+  // Future server callers must not be able to bypass destination/key checks.
+  validatePushSubscription(input);
   const value = { ...input, lguIds: cleanLguIds(input.lguIds) };
   const deploymentNamespace = namespace();
   const now = new Date().toISOString();
@@ -114,14 +118,26 @@ export async function createNotificationEvent(record: SuspensionRecord): Promise
 
 export async function listPendingPushDeliveries(now = new Date(), limit = 100): Promise<PendingPushDelivery[]> {
   if (getStorageDriver() === "local-json") {
+    const deploymentNamespace = namespace();
     const state = readLocal(); const events = new Map(state.events.map((event) => [event.id, event])); const subscriptions = new Map(state.subscriptions.map((subscription) => [subscription.id, subscription]));
-    return state.deliveries.filter((delivery) => (delivery.state === "pending" || delivery.state === "failed") && Date.parse(delivery.nextAttemptAt) <= now.getTime()).slice(0, limit).flatMap((delivery) => { const event = events.get(delivery.eventId); const subscription = subscriptions.get(delivery.subscriptionId); return event && subscription?.active ? [{ delivery: { ...delivery }, event: { ...event }, subscription: { ...subscription } }] : []; });
+    return state.deliveries.filter((delivery) => (delivery.state === "pending" || delivery.state === "failed") && Date.parse(delivery.nextAttemptAt) <= now.getTime()).flatMap((delivery) => {
+      const event = events.get(delivery.eventId); const subscription = subscriptions.get(delivery.subscriptionId);
+      return event?.deploymentNamespace === deploymentNamespace && subscription?.deploymentNamespace === deploymentNamespace && subscription.active
+        ? [{ delivery: { ...delivery }, event: { ...event }, subscription: { ...subscription } }] : [];
+    }).slice(0, Math.max(1, Math.min(limit, 100)));
   }
   return notificationStoreRpc<PendingPushDelivery[]>("list-pending", { now: now.toISOString(), limit });
 }
 
 export async function recordPushDelivery(id: string, update: Pick<NotificationDelivery, "state" | "attempts" | "nextAttemptAt"> & Partial<Pick<NotificationDelivery, "lastAttemptAt" | "deliveredAt" | "lastErrorCode">>): Promise<void> {
-  if (getStorageDriver() === "local-json") { await mutateLocal((state) => { const delivery = state.deliveries.find((item) => item.id === id); if (delivery) Object.assign(delivery, update); }); return; }
+  if (getStorageDriver() === "local-json") {
+    const deploymentNamespace = namespace();
+    await mutateLocal((state) => {
+      const delivery = state.deliveries.find((item) => item.id === id);
+      if (delivery && state.events.some((event) => event.id === delivery.eventId && event.deploymentNamespace === deploymentNamespace)
+        && state.subscriptions.some((subscription) => subscription.id === delivery.subscriptionId && subscription.deploymentNamespace === deploymentNamespace)) Object.assign(delivery, update);
+    }); return;
+  }
   await notificationStoreRpc("record-delivery", { id, update });
 }
 

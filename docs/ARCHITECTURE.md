@@ -44,5 +44,6 @@ Database and authorization contracts evolve through forward migrations in `supab
 - Hosted runtime code must preserve the existing least-privilege RPC and namespace boundaries.
 - Collector execution must preserve leases, proof checks, provenance, conflict handling, and publication safeguards.
 - Authentication, CSRF/origin checks, request limits, and Web Push recipient isolation are security boundaries, not optional application conveniences.
+- Administrator RPCs also require the JWT's matching live `auth.sessions` row. Starting a session guard cannot revive a revoked, expired, or replaced login or extend that login's original lifetime; a fresh sign-in creates a new Auth session. These guarantees require migration `20260905161059_prevent_admin_session_reactivation.sql` to be applied.
 
 For product behavior and accessibility requirements, see [PRODUCT.md](../PRODUCT.md). For current engineering state and historical constraints, see [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) and [ENGINEERING_HISTORY.md](ENGINEERING_HISTORY.md).

@@ -174,6 +174,22 @@ describe("media discovery profiles", () => {
 });
 
 describe("safe media fetching", () => {
+  it("cancels discarded redirect response bodies before completing discovery", async () => {
+    const cancel = vi.fn();
+    const fetchMock = vi.fn(async () => fetchMock.mock.calls.length === 1
+      ? new Response(new ReadableStream({ cancel }), { status: 302, headers: { location: "/feed.xml" } })
+      : xmlResponse());
+    await expect(gmaResult(fetchMock as unknown as typeof fetch)).resolves.toMatchObject({ health: "reachable_no_candidates" });
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels discarded error response bodies before returning failure", async () => {
+    const cancel = vi.fn();
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream({ cancel }), { status: 503 }));
+    await expect(gmaResult(fetchMock as unknown as typeof fetch)).resolves.toMatchObject({ health: "failed" });
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
   it("fetches an approved HTTPS source with manual redirect handling", async () => {
     const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       expect(init?.redirect).toBe("manual");

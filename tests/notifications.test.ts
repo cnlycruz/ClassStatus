@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createECDH } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALL_LGU_IDS } from "@/data/lgus";
 import { enqueuePublicationNotification, dispatchPendingPushNotifications, notificationPayload } from "@/lib/notifications/dispatch";
@@ -10,6 +11,10 @@ import type { SuspensionRecord } from "@/types";
 
 let directory = "";
 const savedEnvironment = { data: process.env.CLASSSTATUS_DATA_DIR, driver: process.env.CLASSSTATUS_STORAGE_DRIVER, namespace: process.env.CLASSSTATUS_SUPABASE_NAMESPACE };
+const ecdh = createECDH("prime256v1");
+ecdh.generateKeys();
+const pushKeys = { p256dh: ecdh.getPublicKey().toString("base64url"), auth: Buffer.alloc(16, 9).toString("base64url") };
+const endpoint = (name: string) => `https://fcm.googleapis.com/fcm/send/${name}`;
 
 function record(overrides: Partial<SuspensionRecord> = {}): SuspensionRecord {
   return {
@@ -65,7 +70,7 @@ describe("durable publication push notifications", () => {
   });
 
   it("does not make a failed push alter the event and preserves its original publication time on retry", async () => {
-    await savePushSubscription({ endpoint: "https://push.example/caloocan", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan"] });
+    await savePushSubscription({ endpoint: endpoint("caloocan"), ...pushKeys, lguIds: ["caloocan"] });
     await createNotificationEvent(record());
     const firstAttempt: string[] = [];
     await dispatchPendingPushNotifications(async (_delivery, payload) => { firstAttempt.push(payload.body); throw new Error("network"); });
@@ -79,18 +84,18 @@ describe("durable publication push notifications", () => {
   });
 
   it("filters recipients by LGU, skips unsubscribed users, and deactivates permanently invalid subscriptions", async () => {
-    const caloocan = await savePushSubscription({ endpoint: "https://push.example/caloocan", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan"] });
-    const manila = await savePushSubscription({ endpoint: "https://push.example/manila", p256dh: "c".repeat(32), auth: "d".repeat(16), lguIds: ["manila"] });
+    const caloocan = await savePushSubscription({ endpoint: endpoint("caloocan"), ...pushKeys, lguIds: ["caloocan"] });
+    const manila = await savePushSubscription({ endpoint: endpoint("manila"), ...pushKeys, lguIds: ["manila"] });
     await deactivatePushSubscription(manila.id);
     await createNotificationEvent(record());
     const endpoints: string[] = [];
     await dispatchPendingPushNotifications(async (delivery) => { endpoints.push(delivery.subscription.endpoint); });
-    expect(endpoints).toEqual(["https://push.example/caloocan"]);
+    expect(endpoints).toEqual([endpoint("caloocan")]);
     const updated = record({ effectiveDate: "2026-09-09" });
     await createNotificationEvent(updated);
     vi.advanceTimersByTime(1);
     await dispatchPendingPushNotifications(async () => { throw { statusCode: 410 }; });
-    expect(document().subscriptions.find((item) => item.endpoint === "https://push.example/caloocan")?.active).toBe(false);
+    expect(document().subscriptions.find((item) => item.endpoint === endpoint("caloocan"))?.active).toBe(false);
     expect(caloocan.id).toBeTruthy();
   });
 
@@ -109,4 +114,15 @@ describe("durable publication push notifications", () => {
   });
 
   it("retains exactly the 17 NCR preference options", () => expect(ALL_LGU_IDS).toHaveLength(17));
+
+  it("does not send an automatic retry after its suspension has expired", async () => {
+    await savePushSubscription({ endpoint: endpoint("caloocan"), ...pushKeys, lguIds: ["caloocan"] });
+    await createNotificationEvent(record());
+    vi.setSystemTime(new Date("2026-09-09T00:00:00+08:00"));
+    const sender = vi.fn(async () => undefined);
+    await dispatchPendingPushNotifications(sender);
+    expect(sender).not.toHaveBeenCalled();
+    expect(document().deliveries[0]).toMatchObject({ state: "invalid" });
+    expect(document().subscriptions[0].active).toBe(true);
+  });
 });

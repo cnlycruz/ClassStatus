@@ -118,6 +118,18 @@ describe("Tier 3 collector policy and persistence", () => {
     await clearLiveSuspensions();
   });
 
+  it("keeps malicious restricted and unknown-school source fixtures out of persistence", async () => {
+    const items = [
+      "Classes are suspended throughout Metro Manila in all levels, public and private, on August 23, 2026, except Makati City.",
+      "Manila Experimental Academy - Classes are suspended in all levels, public and private, on August 23, 2026.",
+      Array.from({ length: 600 }, () => rawItem().rawText).join("\n"),
+    ].map((rawText) => ({ ...rawItem(), rawText }));
+    const engine = new CollectorEngine({ sources: [tier3Source()], mediaAdapter: new FakeAdapter(items), now: () => new Date("2026-08-23T08:00:00+08:00") });
+    const summary = await engine.runSweep();
+    expect(summary).toMatchObject({ announcementsPublished: 0, announcementsValidated: 0, announcementsRejected: 3 });
+    expect(await getSuspensions()).toEqual([]);
+  });
+
   it("hard-disables Tier 1 even when a caller tries to enable it", async () => {
     const adapter = new FakeAdapter();
     const tier1: CollectorSourceConfig = {

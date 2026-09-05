@@ -6,7 +6,10 @@ const mocks = vi.hoisted(() => {
   const state = { namespace: "production" as "preview" | "production", signedInUserId: adminUserId };
   const userRpc = vi.fn();
   const publicRpc = vi.fn();
-  const signOut = vi.fn(async () => ({ error: null }));
+  const signOut = vi.fn(async (options?: { scope?: string }): Promise<{ error: Error | null }> => {
+    void options;
+    return { error: null };
+  });
   const userClient = {
     auth: {
       signInWithPassword: vi.fn(async () => ({
@@ -80,6 +83,7 @@ describe("Supabase admin namespace boundaries", () => {
     mocks.state.namespace = "production";
     mocks.state.signedInUserId = mocks.adminUserId;
     vi.clearAllMocks();
+    mocks.signOut.mockResolvedValue({ error: null });
     mocks.userRpc.mockImplementation(async (operation: string) => ({ data: sessionPolicy(operation), error: null }));
   });
 
@@ -135,5 +139,28 @@ describe("Supabase admin namespace boundaries", () => {
   it("does not expose a hosted failure-recording RPC", async () => {
     await recordLoginFailure("admin@example.com");
     expect(mocks.publicRpc).not.toHaveBeenCalled();
+  });
+
+  it("keeps logout effective when either independent revocation boundary succeeds", async () => {
+    mocks.userRpc.mockImplementation(async (operation: string) => operation.includes("revoke_admin_session")
+      ? { data: null, error: new Error("database unavailable") }
+      : { data: sessionPolicy(operation), error: null });
+    await expect(revokeAdminSession()).resolves.toBeUndefined();
+    expect(mocks.signOut).toHaveBeenCalledWith({ scope: "global" });
+
+    mocks.userRpc.mockImplementation(async (operation: string) => ({ data: sessionPolicy(operation), error: null }));
+    mocks.signOut.mockResolvedValue({ error: new Error("auth unavailable") });
+    await expect(revokeAdminSession()).resolves.toBeUndefined();
+    expect(mocks.signOut).toHaveBeenCalledWith({ scope: "local" });
+  });
+
+  it("fails logout closed when neither the guard nor Auth session can be revoked", async () => {
+    mocks.userRpc.mockImplementation(async (operation: string) => operation.includes("revoke_admin_session")
+      ? { data: null, error: new Error("database unavailable") }
+      : { data: sessionPolicy(operation), error: null });
+    mocks.signOut.mockResolvedValue({ error: new Error("auth unavailable") });
+    await expect(revokeAdminSession()).rejects.toThrow("ADMIN_AUTH_UNAVAILABLE");
+    expect(mocks.signOut).toHaveBeenCalledWith({ scope: "global" });
+    expect(mocks.signOut).toHaveBeenCalledWith({ scope: "local" });
   });
 });

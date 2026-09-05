@@ -56,12 +56,26 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+// Resolve with the browser URL parser; a leading slash also permits //host
+// and slash/backslash variants, which must never navigate away from this app.
+function notificationDestination(value) {
+  if (typeof value !== "string" || !value.startsWith("/")) return "/";
+  try {
+    const url = new URL(value, self.location.origin);
+    if (url.origin !== self.location.origin || url.username || url.password) return "/";
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/";
+  }
+}
+
 self.addEventListener("push", (event) => {
   let payload = {};
   try { payload = event.data ? event.data.json() : {}; } catch { payload = {}; }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) payload = {};
   const title = typeof payload.title === "string" ? payload.title : "Class Status";
   const body = typeof payload.body === "string" ? payload.body : "";
-  const url = typeof payload.url === "string" && payload.url.startsWith("/") ? payload.url : "/";
+  const url = notificationDestination(payload.url);
   const tag = typeof payload.tag === "string" ? payload.tag : "class-status-alert";
   event.waitUntil(self.registration.showNotification(title, {
     body,
@@ -74,8 +88,7 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const destination = event.notification.data && typeof event.notification.data.url === "string"
-    ? event.notification.data.url : "/";
+  const destination = notificationDestination(event.notification.data?.url);
   event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (windows) => {
     const existing = windows.find((client) => new URL(client.url).origin === self.location.origin);
     if (existing) {

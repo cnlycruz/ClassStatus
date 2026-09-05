@@ -486,6 +486,8 @@ async function fetchDocument(
         signal: controller.signal,
       });
       if (REDIRECT_STATUSES.has(response.status)) {
+        // Discarded bodies must not retain connections beyond this hop's budget.
+        try { await response.body?.cancel(); } catch { controller.abort(); throw new SourceFetchError("Source response could not be closed"); }
         if (redirectCount >= MAX_REDIRECTS) throw new SourceFetchError("Source redirected too many times");
         const location = response.headers.get("location");
         if (!location) throw new SourceFetchError("Source redirect was missing a destination");
@@ -493,7 +495,10 @@ async function fetchDocument(
         redirectCount++;
         continue;
       }
-      if (!response.ok) throw new SourceFetchError(`Approved source returned HTTP ${response.status}`, response.status);
+      if (!response.ok) {
+        try { await response.body?.cancel(); } catch { controller.abort(); }
+        throw new SourceFetchError(`Approved source returned HTTP ${response.status}`, response.status);
+      }
       return {
         body: await readBoundedBody(response, controller),
         finalUrl: currentUrl.toString(),

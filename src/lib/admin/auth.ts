@@ -230,11 +230,28 @@ export async function revokeAdminSession(): Promise<void> {
     (await cookies()).set(adminCookieName(), "", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/", maxAge: 0 });
     return;
   }
+  const client = await createUserSupabaseClient();
+  let context: SupabaseAdminContext | undefined;
+  let guardRevoked = false;
+  let authRevoked = false;
+
+  try { context = await verifiedSupabaseAdminContext(client); } catch { /* still attempt provider sign-out */ }
+  if (context) {
+    try {
+      await supabaseSessionPolicyRpc("revoke_admin_session", {}, context);
+      guardRevoked = true;
+    } catch { /* the live Auth session check below is an independent boundary */ }
+  }
+
   try {
-    const result = await supabaseSessionPolicyRpc("revoke_admin_session");
-    await result.client.auth.signOut({ scope: "global" });
-  } catch {
-    const client = await createUserSupabaseClient();
+    const result = await client.auth.signOut({ scope: "global" });
+    authRevoked = !result.error;
+  } catch { /* local cookie/session cleanup is still required below */ }
+
+  if (!authRevoked) {
     await client.auth.signOut({ scope: "local" }).catch(() => undefined);
   }
+  // Either the ClassStatus guard or the Supabase Auth session must be revoked.
+  // The live-session database check makes each one independently fail closed.
+  if (!guardRevoked && !authRevoked) throw new Error("ADMIN_AUTH_UNAVAILABLE");
 }

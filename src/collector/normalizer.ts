@@ -66,6 +66,16 @@ const NO_SUSPENSION = /(tuloy\s+ang\s+(?:pasok|klase)|may\s+pasok|walang\s+suspe
 const UNCERTAIN = /(might|may\s+be|could|possibly|rumou?r|unconfirmed|forecast|expected\s+to|authorized\s+to|advised\s+to|at\s+their\s+discretion)/i;
 const SCHOOL_WORDS = /(class|classes|klase|pasok|school|paaralan|face-to-face)/i;
 
+// Bound both parsing CPU and the work that a single remote article can fan out
+// into. Never partially publish a truncated article: its tail may qualify it.
+const MAX_ARTICLE_CHARACTERS = 128_000;
+const MAX_ARTICLE_LINES = 256;
+const MAX_STATEMENT_CHARACTERS = 4_000;
+const MAX_PUBLICATION_TARGETS = 256;
+// The current LGU model cannot represent exceptions or barangay-level scopes.
+// Hold the article rather than discarding an exception on a separate line.
+const UNSUPPORTED_RESTRICTION = /\b(?:except(?:ion)?|excluding|other\s+than|save\s+for|but\s+not|unless|maliban|liban\s+sa|bukod\s+sa|barangays?|districts?|(?:selected|specific|some|certain|affected|flood-prone)\s+(?:areas|schools|campuses)|only\s+in|limited\s+to)\b/i;
+
 function escapeRegex(value: string): string {
   return value.replace(/[\/\\^$*+?.()|[\]{}]/g, "\\$&");
 }
@@ -305,13 +315,13 @@ function logicalSegment(
   };
 }
 
-function buildLogicalSegments(rawText: string, articleTitle: string): LogicalAnnouncementSegment[] {
+function buildLogicalSegments(lines: string[], articleTitle: string): LogicalAnnouncementSegment[] {
   const segments: LogicalAnnouncementSegment[] = [];
   let articleActionLine = SUSPENSION_ACTION.test(articleTitle) ? articleTitle : undefined;
   let section: SectionContext | undefined;
   let pendingTarget: PendingTarget | undefined;
 
-  for (const line of articleLines(rawText)) {
+  for (const line of lines) {
     const nextSection = sectionContext(line);
     if (nextSection) {
       section = nextSection;
@@ -437,12 +447,22 @@ function rejected(excerpt: string, reason: string, overrides: Partial<ParsedAnno
 }
 
 export function normalizeAnnouncementSegments(rawText: string, context: NormalizationContext): ParsedAnnouncement[] {
-  const relevantSegments = buildLogicalSegments(rawText, context.articleTitle).filter(
+  if (rawText.length > MAX_ARTICLE_CHARACTERS || context.articleTitle.length > MAX_STATEMENT_CHARACTERS) {
+    return [rejected(context.articleTitle, "article-complexity-limit")];
+  }
+  const lines = articleLines(rawText);
+  if (lines.length > MAX_ARTICLE_LINES || lines.some((line) => line.length > MAX_STATEMENT_CHARACTERS)) {
+    return [rejected(context.articleTitle, "article-complexity-limit")];
+  }
+  if (UNSUPPORTED_RESTRICTION.test(rawText) || UNSUPPORTED_RESTRICTION.test(context.articleTitle)) {
+    return [rejected(rawText, "unsupported-restricted-scope")];
+  }
+  const relevantSegments = buildLogicalSegments(lines, context.articleTitle).filter(
     (segment) => SCHOOL_WORDS.test(segment.text) && hasStatementAction(segment.text)
   );
   if (relevantSegments.length === 0) return [rejected(context.articleTitle, "no-explicit-suspension-statement")];
 
-  return relevantSegments.map((segment) => {
+  const results = relevantSegments.map<ParsedAnnouncement>((segment) => {
     const text = segment.text;
     const evidence = segment.evidenceExcerpt;
     if (NO_SUSPENSION.test(text)) return rejected(evidence, "explicit-no-suspension");
@@ -460,6 +480,16 @@ export function normalizeAnnouncementSegments(rawText: string, context: Normaliz
         schoolId: school.id,
         parserOutcome: "held:school-specific",
       });
+    }
+
+    // A city name inside an unknown institution is not a citywide target.
+    // Remove the supported generic education-scope terms, then hold any
+    // unresolved singular institution identity instead of falling back to LGU.
+    const identityText = text
+      .replace(/\b(?:graduate|senior\s+high|junior\s+high|high|grade)\s+school\b|\ball\s+school\s+levels\b/gi, " ")
+      .replace(/\bcollege(?:-level)?\s+(?:classes|students?)\b/gi, " ");
+    if (/\b(?:academy|college|institute|university|campus|school|learning\s+cent(?:er|re)|polytechnic)\b/i.test(identityText)) {
+      return rejected(evidence, "unresolved-school-scope");
     }
 
     const lguMatch = segment.scopeOverride || matchLgus(stripDateline(text).toLowerCase());
@@ -502,6 +532,10 @@ export function normalizeAnnouncementSegments(rawText: string, context: Normaliz
       publishable: true,
     };
   });
+  if (results.reduce((total, result) => total + (result.publishable ? result.matchedLguIds.length : 0), 0) > MAX_PUBLICATION_TARGETS) {
+    return [rejected(context.articleTitle, "article-complexity-limit")];
+  }
+  return results;
 }
 
 /** Compatibility helper for callers that normalize a single statement. */

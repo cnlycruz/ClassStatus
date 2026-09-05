@@ -5,6 +5,7 @@ import { isLivePublicationRecord } from "@/collector/sourcePolicy";
 import { evaluateSuspensionLifecycle } from "@/collector/lifecycle";
 import { createNotificationEvent, invalidatePushSubscription, listPendingPushDeliveries, recordPushDelivery } from "./storage";
 import type { NotificationEvent, PendingPushDelivery } from "./types";
+import { InvalidPushSubscriptionError, validatePushSubscription } from "./subscriptionValidation";
 
 function getVapidConfig() {
   const publicKey = process.env.CLASSSTATUS_VAPID_PUBLIC_KEY?.trim(); const privateKey = process.env.CLASSSTATUS_VAPID_PRIVATE_KEY?.trim(); const subject = process.env.CLASSSTATUS_VAPID_SUBJECT?.trim();
@@ -60,19 +61,30 @@ export async function dispatchPendingPushNotifications(sender: (delivery: Pendin
   const vapid = getVapidConfig();
   if (!vapid) throw new Error("push-not-configured");
   webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
-  await webpush.sendNotification({ endpoint: delivery.subscription.endpoint, keys: { p256dh: delivery.subscription.p256dh, auth: delivery.subscription.auth } }, JSON.stringify(payload));
+  await webpush.sendNotification({ endpoint: delivery.subscription.endpoint, keys: { p256dh: delivery.subscription.p256dh, auth: delivery.subscription.auth } }, JSON.stringify(payload), { timeout: 10_000 });
 }): Promise<void> {
   const pending = await listPendingPushDeliveries();
   for (const delivery of pending) {
     const attemptedAt = new Date().toISOString(); const attempts = delivery.delivery.attempts + 1;
     try {
+      // Recheck stored records as well: subscriptions accepted before this
+      // boundary must never reach any transport, including injected workers.
+      validatePushSubscription(delivery.subscription);
+      const record = delivery.event.record;
+      // Enqueue-time validity is insufficient after an outage/backlog. A stale
+      // suspension must not reach students merely because its delivery retries.
+      if (delivery.event.kind !== "manual" && (!record || !isLivePublicationRecord(record)
+        || record.isExpired || evaluateSuspensionLifecycle(record).isExpired || record.status === "awaiting-information")) {
+        await recordPushDelivery(delivery.delivery.id, { state: "invalid", attempts: delivery.delivery.attempts, nextAttemptAt: attemptedAt, lastErrorCode: "event-not-publishable" });
+        continue;
+      }
       await sender(delivery, notificationPayload(delivery.event));
       await recordPushDelivery(delivery.delivery.id, { state: "delivered", attempts, nextAttemptAt: attemptedAt, lastAttemptAt: attemptedAt, deliveredAt: attemptedAt });
     } catch (error: unknown) {
       const statusCode = typeof error === "object" && error && "statusCode" in error ? Number((error as { statusCode?: unknown }).statusCode) : 0;
-      if (statusCode === 404 || statusCode === 410) {
+      if (error instanceof InvalidPushSubscriptionError || statusCode === 404 || statusCode === 410) {
         await invalidatePushSubscription(delivery.subscription.id);
-        await recordPushDelivery(delivery.delivery.id, { state: "invalid", attempts, nextAttemptAt: attemptedAt, lastAttemptAt: attemptedAt, lastErrorCode: "subscription-gone" });
+        await recordPushDelivery(delivery.delivery.id, { state: "invalid", attempts, nextAttemptAt: attemptedAt, lastAttemptAt: attemptedAt, lastErrorCode: error instanceof InvalidPushSubscriptionError ? "subscription-invalid" : "subscription-gone" });
       } else {
         await recordPushDelivery(delivery.delivery.id, { state: "failed", attempts, nextAttemptAt: retryAt(attempts), lastAttemptAt: attemptedAt, lastErrorCode: statusCode ? `push-${statusCode}` : "push-failed" });
       }

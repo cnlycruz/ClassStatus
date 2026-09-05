@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createECDH } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { ALL_LGU_IDS } from "@/data/lgus";
@@ -14,6 +15,10 @@ import type { LGUId, SuspensionRecord } from "@/types";
 let directory = "";
 const environment = { data: process.env.CLASSSTATUS_DATA_DIR, driver: process.env.CLASSSTATUS_STORAGE_DRIVER, namespace: process.env.CLASSSTATUS_SUPABASE_NAMESPACE };
 const requestKey = "11111111-1111-4111-8111-111111111111";
+const ecdh = createECDH("prime256v1");
+ecdh.generateKeys();
+const pushKeys = { p256dh: ecdh.getPublicKey().toString("base64url"), auth: Buffer.alloc(16, 11).toString("base64url") };
+const endpoint = (name: string) => `https://fcm.googleapis.com/fcm/send/${name}`;
 function input(overrides: Partial<{ requestKey: string; message: string; recipientMode: "all" | "selected-lgus"; targetLguIds: LGUId[] }> = {}) { return { requestKey, message: "Heavy rain is expected this afternoon. Stay safe.", recipientMode: "all" as const, targetLguIds: [] as LGUId[], ...overrides }; }
 function document() { return JSON.parse(fs.readFileSync(path.join(directory, "push_notifications.json"), "utf8")) as { events: Array<{ kind: string }>; deliveries: Array<{ state: string }> }; }
 function automaticRecord(): SuspensionRecord { return { id: "automatic", lguId: "caloocan", status: "classes-suspended", affectedLevels: ["all-levels"], schoolSector: "all", effectiveDate: "2026-09-08", isAllDay: true, reason: "Rain", announcementSummary: "Suspended", source: { id: "gma-news-walang-pasok", name: "GMA", organization: "GMA", url: "https://example.test", type: "news-reputable", reliabilityTier: 3, verified: false, publishedAt: "2026-09-07T00:00:00Z" }, confidence: "medium", discoveredAt: "2026-09-07T00:00:00Z", publishedAt: "2026-09-07T00:00:00Z", lifecycleState: "upcoming", isUpcoming: true, isActive: false, isExpired: false, collectorProvenance: { pipeline: "tier3-media", runId: "run", collectedAt: "2026-09-07T00:00:00Z" }, publicationProvenance: { type: "automatic-collector", publicLabel: "Published from approved Tier 3 media evidence" } }; }
@@ -33,8 +38,8 @@ describe("protected manual custom notifications", () => {
   });
 
   it("creates one manual broadcast with all active subscribers, ignoring LGU preferences", async () => {
-    await savePushSubscription({ endpoint: "https://push.test/caloocan", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan"] });
-    await savePushSubscription({ endpoint: "https://push.test/manila", p256dh: "c".repeat(32), auth: "d".repeat(16), lguIds: ["manila"] });
+    await savePushSubscription({ endpoint: endpoint("caloocan"), ...pushKeys, lguIds: ["caloocan"] });
+    await savePushSubscription({ endpoint: endpoint("manila"), ...pushKeys, lguIds: ["manila"] });
     const broadcast = await createManualBroadcast(input());
     expect(broadcast).toMatchObject({ created: true, recipientCount: 2, event: { kind: "manual", title: "Class Status" } });
     expect(notificationPayload(broadcast.event)).toMatchObject({ title: "Class Status", body: input().message, url: "/" });
@@ -52,7 +57,7 @@ describe("protected manual custom notifications", () => {
   });
 
   it("preserves the manual message through the pending outbox shape and retries", async () => {
-    await savePushSubscription({ endpoint: "https://push.test/caloocan", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan"] });
+    await savePushSubscription({ endpoint: endpoint("caloocan"), ...pushKeys, lguIds: ["caloocan"] });
     await createManualBroadcast(input({ message: "  Waiting pa rin sa suspension no?  " }));
 
     const [pending] = await listPendingPushDeliveries();
@@ -67,23 +72,23 @@ describe("protected manual custom notifications", () => {
   });
 
   it("keeps the authoritative send path available independently of recipient preview", async () => {
-    await savePushSubscription({ endpoint: "https://push.test/caloocan", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan"] });
+    await savePushSubscription({ endpoint: endpoint("caloocan"), ...pushKeys, lguIds: ["caloocan"] });
 
     await expect(sendAdminNotification(input())).resolves.toMatchObject({ created: true, recipientCount: 1 });
     expect(document().deliveries).toHaveLength(1);
   });
 
   it("calculates recipients for all-subscriber and selected-LGU previews without creating an event", async () => {
-    await savePushSubscription({ endpoint: "https://push.test/caloocan", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan"] });
-    await savePushSubscription({ endpoint: "https://push.test/manila", p256dh: "c".repeat(32), auth: "d".repeat(16), lguIds: ["manila"] });
+    await savePushSubscription({ endpoint: endpoint("caloocan"), ...pushKeys, lguIds: ["caloocan"] });
+    await savePushSubscription({ endpoint: endpoint("manila"), ...pushKeys, lguIds: ["manila"] });
     await expect(previewManualBroadcast(input())).resolves.toBe(2);
     await expect(previewManualBroadcast(input({ recipientMode: "selected-lgus", targetLguIds: ["caloocan"] }))).resolves.toBe(1);
     expect(document().events).toHaveLength(0);
   });
 
   it("targets selected LGUs uniquely, excludes inactive subscribers, and keeps all 17 LGUs canonical", async () => {
-    const matching = await savePushSubscription({ endpoint: "https://push.test/multi", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan", "manila"] });
-    const manila = await savePushSubscription({ endpoint: "https://push.test/manila", p256dh: "c".repeat(32), auth: "d".repeat(16), lguIds: ["manila"] });
+    const matching = await savePushSubscription({ endpoint: endpoint("multi"), ...pushKeys, lguIds: ["caloocan", "manila"] });
+    const manila = await savePushSubscription({ endpoint: endpoint("manila"), ...pushKeys, lguIds: ["manila"] });
     await deactivatePushSubscription(manila.id);
     const broadcast = await createManualBroadcast(input({ recipientMode: "selected-lgus", targetLguIds: ["caloocan", "manila"] }));
     expect(broadcast.recipientCount).toBe(1); expect(document().deliveries).toHaveLength(1); expect(matching.id).toBeTruthy();
@@ -102,7 +107,7 @@ describe("protected manual custom notifications", () => {
   });
 
   it("uses the shared retry and invalid-subscription cleanup path without affecting the broadcast", async () => {
-    await savePushSubscription({ endpoint: "https://push.test/caloocan", p256dh: "a".repeat(32), auth: "b".repeat(16), lguIds: ["caloocan"] });
+    await savePushSubscription({ endpoint: endpoint("caloocan"), ...pushKeys, lguIds: ["caloocan"] });
     await createManualBroadcast(input());
     await dispatchPendingPushNotifications(async () => { throw new Error("network"); }); expect(document().events).toHaveLength(1); expect(document().deliveries[0].state).toBe("failed");
     vi.advanceTimersByTime(60_000); await dispatchPendingPushNotifications(async () => { throw { statusCode: 410 }; }); expect(document().deliveries[0].state).toBe("invalid");

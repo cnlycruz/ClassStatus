@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as getLgus } from "@/app/api/lgus/route";
 import { CollectorEngine } from "@/collector/engine";
 import { getCollectorFreshness, recordSuccessfulCollectorCheck } from "@/collector/storage";
@@ -64,6 +64,8 @@ function restoreEnvironment() {
 
 describe("public collector freshness", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-05T00:03:00.000Z"));
     testDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "classstatus-freshness-"));
     process.env.CLASSSTATUS_DATA_DIR = testDirectory;
     process.env.CLASSSTATUS_STORAGE_DRIVER = "local-json";
@@ -72,6 +74,7 @@ describe("public collector freshness", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     restoreEnvironment();
     fs.rmSync(testDirectory, { recursive: true, force: true });
   });

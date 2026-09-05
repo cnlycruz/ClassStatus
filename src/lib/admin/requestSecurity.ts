@@ -49,9 +49,30 @@ export function validateMutationEnvelope(request: NextRequest, publicOrigin: str
 }
 
 export async function readBoundedJson(request: NextRequest, maximumBytes = 16_384): Promise<unknown> {
-  const text = await request.text();
-  if (Buffer.byteLength(text, "utf8") > maximumBytes) throw new AdminHttpError(413, "REQUEST_TOO_LARGE");
-  try { return JSON.parse(text); } catch { throw new AdminHttpError(422, "INVALID_JSON"); }
+  const reader = request.body?.getReader();
+  if (!reader) throw new AdminHttpError(422, "INVALID_JSON");
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let bytesRead = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytesRead += value.byteLength;
+      if (bytesRead > maximumBytes) throw new AdminHttpError(413, "REQUEST_TOO_LARGE");
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return JSON.parse(text);
+  } catch (error) {
+    // Do not drain a chunked/lying-length request after reaching its budget.
+    // Cancellation must not delay the rejection if a transport stalls.
+    void reader.cancel().catch(() => undefined);
+    if (error instanceof AdminHttpError) throw error;
+    throw new AdminHttpError(422, "INVALID_JSON");
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export function adminErrorResponse(error: unknown): Response {

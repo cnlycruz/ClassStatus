@@ -3,7 +3,7 @@
 This file contains only **currently unresolved, intentionally limited, or Production-verification-dependent**
 items. Historical fixed bugs belong in `ENGINEERING_HISTORY.md`.
 
-Last reviewed: 2026-09-05.
+Last reviewed: 2026-09-06.
 
 ## Current severity summary
 
@@ -22,6 +22,11 @@ Recent notification/reliability migrations exist in `main`, including:
 - manual admin broadcasts;
 - manual-notification history grouping fix.
 
+Two reviewed security migrations are present only in the current working tree and are intentionally unapplied:
+
+- `20260905161059_prevent_admin_session_reactivation.sql`;
+- `20260905161120_harden_notification_namespace.sql`.
+
 Git cannot prove that every migration is applied to the live Supabase Production database.
 
 ### When to investigate
@@ -34,7 +39,20 @@ behaves differently in Production than in tests.
 Before changing application code, compare the live migration/schema/RPC state with the migrations in `main`.
 Do not create a duplicate “fix” migration for a migration that simply was not deployed yet.
 
-## 2. Recipient-preview degraded mode is intentional
+## 2. Anonymous notification registration remains abuse-sensitive
+
+**Type:** CONFIRMED RESIDUAL AVAILABILITY RISK
+
+Provider/key validation prevents arbitrary push destinations, but an automated client can still create many
+syntactically valid, distinct endpoints under an approved push-provider hostname. Origin and Fetch Metadata are
+browser-CSRF controls, not client identity or rate limiting. This can grow subscription and delivery storage and
+amplify normal notification fanout.
+
+The deployment owner must choose trusted-edge registration controls plus namespace capacity/retention policy.
+Do not implement a process-local counter, trust caller-supplied IP headers, or impose an arbitrary global quota
+that locks out students behind shared school networks.
+
+## 3. Recipient-preview degraded mode is intentional
 
 **Type:** EXPECTED DEGRADED BEHAVIOR, NOT BY ITSELF A BUG
 
@@ -53,7 +71,7 @@ broadcast is created.
 
 Do not restore the old behavior where a preview-count outage automatically blocks a safe authoritative send.
 
-## 3. Notification delivery requires runtime configuration and real subscriptions
+## 4. Notification delivery requires runtime configuration and real subscriptions
 
 **Type:** PRODUCTION/ENVIRONMENT DEPENDENCY
 
@@ -72,7 +90,7 @@ When troubleshooting, separate these stages:
 
 Do not collapse all of these into “notifications are broken.”
 
-## 4. Collector source coverage is intentionally limited
+## 5. Collector source coverage is intentionally limited
 
 **Type:** PRODUCT LIMITATION / INTENTIONAL
 
@@ -84,7 +102,7 @@ somewhere the active collector does not yet cover.
 
 Do not solve this by silently enabling incomplete adapters or by lowering evidence requirements.
 
-## 5. External source HTML can change
+## 6. External source HTML can change
 
 **Type:** ONGOING OPERATIONAL RISK
 
@@ -100,7 +118,7 @@ When a source stops producing records:
 
 Do not weaken the normalizer globally because one publisher changed markup.
 
-## 6. Documentation can lag implementation
+## 7. Documentation can lag implementation
 
 **Type:** PROCESS RISK
 

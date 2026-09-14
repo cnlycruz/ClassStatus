@@ -13,7 +13,8 @@ describe("startup splash", () => {
     expect(html).toContain("Class Status");
     expect(html).toContain("startup-ncr-outline");
     expect(html).toContain("startup-ncr-scan");
-    expect((html.match(/startup-status-dot/g) ?? [])).toHaveLength(8);
+    expect((html.match(/startup-status-node/g) ?? [])).toHaveLength(9);
+    expect(html).not.toContain("NCR_GEO_PATHS");
     expect(html).toContain("min-h-[100dvh]");
     expect(html).toContain("z-[100]");
   });

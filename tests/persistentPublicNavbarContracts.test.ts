@@ -53,12 +53,12 @@ describe("persistent public navbar contracts", () => {
     expect(splash).toContain("reducedMotion ? 250 : 1_300");
     expect(styles).toContain("@keyframes startup-ncr-trace");
     expect(styles).toContain("@keyframes startup-ncr-scan");
-    expect(styles).toContain("@keyframes startup-status-dot");
+    expect(styles).toContain("@keyframes startup-status-node");
     expect(styles).toContain("@keyframes startup-splash-dismiss");
     expect(styles).toContain("safe-area-inset-top");
-    expect(styles).toContain(".startup-ncr-outline path");
+    expect(styles).toContain(".startup-ncr-outline");
     expect(styles).toContain(".startup-ncr-scan");
-    expect(styles).toContain(".startup-status-dot");
+    expect(styles).toContain(".startup-status-node");
     expect(styles).toContain(".startup-splash-title");
     expect(styles).toContain("pointer-events: none");
     expect(styles).toContain("prefers-reduced-motion: reduce");

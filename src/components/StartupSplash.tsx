@@ -1,18 +1,20 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { NCR_GEO_PATHS } from "@/data/ncrGeoData";
-import { NCR_MAP_BASE_VIEWBOX } from "@/lib/ncrMapInteraction";
 
 type StartupSplashProps = {
   onComplete: () => void;
 };
 
-const STARTUP_STATUS_DOTS = [
-  { x: 324, y: 374, tone: "blue", delay: 0 },
-  { x: 426, y: 470, tone: "blue", delay: 64 },
-  { x: 478, y: 617, tone: "emerald", delay: 128 },
-  { x: 362, y: 728, tone: "blue", delay: 192 },
+// A deliberately simplified, static NCR contour for startup branding only.
+// The detailed LGU geometry remains exclusive to the interactive map.
+const STARTUP_NCR_SILHOUETTE =
+  "M 93 10 C 109 10 126 18 137 32 L 147 48 C 154 60 151 73 143 86 L 150 102 C 156 116 150 130 139 141 L 133 151 C 136 165 128 178 117 188 L 108 205 C 103 216 95 220 87 212 L 78 198 C 70 187 66 177 59 166 L 49 151 C 42 140 43 128 50 119 L 40 107 C 31 96 32 84 42 73 L 50 63 C 46 51 50 40 60 32 L 69 25 C 75 16 83 11 93 10 Z";
+
+const STARTUP_STATUS_NODES = [
+  { x: 112, y: 62, tone: "blue", delay: 0 },
+  { x: 78, y: 119, tone: "blue", delay: 70 },
+  { x: 107, y: 166, tone: "ready", delay: 140 },
 ] as const;
 
 export function StartupSplash({ onComplete }: StartupSplashProps) {
@@ -28,64 +30,54 @@ export function StartupSplash({ onComplete }: StartupSplashProps) {
       aria-hidden="true"
       className="startup-splash fixed inset-0 z-[100] flex min-h-[100dvh] items-center justify-center overflow-hidden bg-slate-50 px-6 text-slate-950 dark:bg-slate-950 dark:text-slate-100"
     >
-      <div className="flex w-full max-w-[15rem] flex-col items-center gap-3 sm:max-w-[17rem]">
+      <div className="startup-splash-lockup flex w-full flex-col items-center gap-5">
         <svg
-          className="h-auto w-full overflow-visible"
-          viewBox={`${NCR_MAP_BASE_VIEWBOX.x} ${NCR_MAP_BASE_VIEWBOX.y} ${NCR_MAP_BASE_VIEWBOX.width} ${NCR_MAP_BASE_VIEWBOX.height}`}
+          className="startup-ncr-mark h-[10.5rem] w-auto max-w-[9.75rem] overflow-visible sm:h-[11.5rem]"
+          viewBox="0 0 180 225"
           preserveAspectRatio="xMidYMid meet"
           role="presentation"
         >
           <defs>
             <clipPath id="startup-ncr-clip">
-              {NCR_GEO_PATHS.map((path) => (
-                <path key={path.id} d={path.d} />
-              ))}
+              <path d={STARTUP_NCR_SILHOUETTE} />
             </clipPath>
-            <linearGradient id="startup-ncr-scan-gradient" x1="0" x2="1" y1="0" y2="0">
+            <linearGradient id="startup-ncr-scan-gradient" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0" stopColor="#3b82f6" stopOpacity="0" />
-              <stop offset="0.42" stopColor="#3b82f6" stopOpacity="0.06" />
-              <stop offset="0.62" stopColor="#60a5fa" stopOpacity="0.52" />
-              <stop offset="0.78" stopColor="#3b82f6" stopOpacity="0.1" />
+              <stop offset="0.4" stopColor="#3b82f6" stopOpacity="0.08" />
+              <stop offset="0.52" stopColor="#60a5fa" stopOpacity="0.58" />
+              <stop offset="0.64" stopColor="#3b82f6" stopOpacity="0.1" />
               <stop offset="1" stopColor="#3b82f6" stopOpacity="0" />
             </linearGradient>
           </defs>
 
-          <g className="startup-ncr-outline">
-            {NCR_GEO_PATHS.map((path, index) => (
-              <path
-                key={path.id}
-                d={path.d}
-                pathLength={1}
-                style={{ "--startup-path-delay": `${(index % 4) * 42}ms` } as React.CSSProperties}
-              />
-            ))}
-          </g>
+          <path className="startup-ncr-fill" d={STARTUP_NCR_SILHOUETTE} />
+          <path className="startup-ncr-outline" d={STARTUP_NCR_SILHOUETTE} pathLength={1} />
 
           <g clipPath="url(#startup-ncr-clip)">
             <rect
               className="startup-ncr-scan"
-              x="-220"
-              y={NCR_MAP_BASE_VIEWBOX.y}
-              width="220"
-              height={NCR_MAP_BASE_VIEWBOX.height}
+              x="20"
+              y="-32"
+              width="140"
+              height="32"
               fill="url(#startup-ncr-scan-gradient)"
             />
           </g>
 
           <g>
-            {STARTUP_STATUS_DOTS.map((dot) => (
-              <circle
-                key={`${dot.x}-${dot.y}`}
-                className={`startup-status-dot startup-status-dot-${dot.tone}`}
-                cx={dot.x}
-                cy={dot.y}
-                r="11"
-                style={{ "--startup-dot-delay": `${dot.delay}ms` } as React.CSSProperties}
-              />
+            {STARTUP_STATUS_NODES.map((node) => (
+              <g
+                key={`${node.x}-${node.y}`}
+                className={`startup-status-node node-${node.tone}`}
+                style={{ "--startup-node-delay": `${node.delay}ms` } as React.CSSProperties}
+              >
+                <circle className="startup-status-node-halo" cx={node.x} cy={node.y} r="8" />
+                <circle className="startup-status-node-core" cx={node.x} cy={node.y} r="4.5" />
+              </g>
             ))}
           </g>
         </svg>
-        <p className="startup-splash-title text-lg font-semibold tracking-tight sm:text-xl">Class Status</p>
+        <p className="startup-splash-title text-xl font-bold tracking-[-0.02em] sm:text-2xl">Class Status</p>
       </div>
     </div>
   );

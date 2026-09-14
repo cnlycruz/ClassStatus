@@ -16,6 +16,7 @@ data/*.lock
 *.tmp
 
 .vercel/
+output/
 supabase/.temp/
 supabase/.branches/
 

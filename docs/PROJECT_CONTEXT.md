@@ -1,229 +1,607 @@
-# ClassStatus Project Context
+# Class Status — Final Product Context / AI Handoff
 
-Last reconciled with `main`: 2026-09-05, after commit `e7c138e` (`fix: harden notification preview and alert UX`).
+Updated: 2026-09-06 (Asia/Manila)
 
-This document records **current engineering truth**, not a chronological transcript. When a detail becomes
-outdated, replace it here and move useful historical context to `ENGINEERING_HISTORY.md`.
+## START HERE — FOR A NEW CHATGPT / CODEX ACCOUNT
 
-## 1. What ClassStatus is
+You are continuing an existing project called **Class Status**. Do not restart the project, replace the architecture, or redesign working areas unless explicitly asked.
 
-ClassStatus NCR is a Metro Manila class-suspension tracker built around the question “May pasok ba?”. Its
-primary users are students checking quickly, often from a phone, with parents, teachers, and school staff as
-secondary users.
+Treat this document as the current high-level source of truth. Before changing code, inspect the repository itself and read the repository documentation, especially:
 
-The product should answer attendance status quickly while keeping the source, timing, scope, and uncertainty
-visible. It is a public-service information tool, not a generic dashboard or social feed.
+- `README.md`
+- `AGENTS.md` if present
+- `PROJECT_STATUS.md` if present
+- `TASKS.md` if present
+- `docs/ARCHITECTURE.md`
+- `docs/KNOWN_ISSUES.md`
+- `SECURITY.md`
+- `.agents/SEC-SKILL.md` for security work if present
 
-## 2. Product invariants
+The project has already completed its main v1 development, security hardening, Supabase migrations, and Production deployment.
 
-- Public scope is all 17 logical NCR LGUs.
-- Caloocan can use multiple map polygons but must resolve to one logical Caloocan status.
-- Manila is one city in the public status model.
-- Statuses must remain evidence-backed and conservative.
-- Unclear evidence is not permission to guess. Use awaiting/uncertain behavior instead.
-- Dates and operational time are interpreted in `Asia/Manila`.
-- The existing Class Status NCR identity, logo, status colors, typography, map-first flow, mobile-first behavior,
-  dark mode, and accessibility expectations are intentional product decisions.
+---
 
-Read `PRODUCT.md` for the fuller product/visual contract.
+# 1. PRODUCT IDENTITY
 
-## 3. Current application architecture
+**Name:** Class Status
 
-### Web application
+**Purpose:** A near-live, evidence-backed class suspension information platform for Metro Manila / NCR students and parents.
 
-- Next.js 15 App Router + React 19 + TypeScript.
-- Tailwind CSS 3 and Lucide icons.
-- Main public routes include `/`, `/sources`, and `/about`.
-- `/collector` is the protected administrator/collector console and redirects unauthenticated users to its
-  login flow.
-- Public APIs expose projected information such as LGUs, suspensions, schools, alert configuration, and the
-  NCR share image. Private collector/admin state must not leak through public projections.
+The core question the product answers is:
 
-### Storage and Production runtime
+> “May pasok ba?”
 
-The repository supports both local JSON and Supabase-backed storage, but they have different purposes:
+The product should make it fast to see whether classes are suspended in a specific NCR LGU while avoiding false claims when evidence is stale, incomplete, conflicting, or ambiguous.
 
-- Local JSON is useful for local development/tests and historical compatibility.
-- Hosted Production uses the Supabase/Postgres storage path and narrow server-side/RPC boundaries.
-- Production is namespaced and must remain isolated from Preview/legacy data.
-- The current Production design intentionally avoids requiring a Supabase service-role/secret key in the
-  hosted application runtime.
-- Scheduled collector execution and its authorization/lease behavior are part of the Production architecture.
+Class Status is an actual deployed Production project, not a prototype.
 
-For public-safe architecture and environment boundaries, read `docs/ARCHITECTURE.md`. For deployment or RPC
-work, inspect the current code and migrations rather than copying old setup commands from chat history.
+---
 
-## 4. Public dashboard behavior
+# 2. CURRENT PROJECT STATUS
 
-The homepage is intentionally map-first.
+As of 2026-09-14:
 
-Current important behaviors include:
+- Main v1 product development: COMPLETE
+- Production audit: COMPLETE
+- Performance pass: COMPLETE
+- PWA/install experience: COMPLETE
+- Web Push notifications: COMPLETE
+- Admin notification tools: COMPLETE
+- Open-source repository preparation: COMPLETE
+- Security audit: COMPLETE
+- Security fixes: COMPLETE
+- Supabase security migrations through `20260914090000`: LIVE IN PRODUCTION
+- Push-registration application code: LIVE IN PRODUCTION
+- Migration history alignment: COMPLETE
+- App-side security patch: committed to `main` and deployed to Vercel Production
+- Production deployment: SUCCESSFUL on Vercel (`dpl_7RTKKQfYvFiV4Qo12Wkdmrj3zSy8`)
 
-- interactive NCR SVG map;
-- Map/List switching;
-- status filters;
-- LGU detail panel;
-- global school/LGU search from the navbar;
-- school finder;
-- source/evidence visibility;
-- visibility-aware dashboard refresh;
-- freshness/reliability messaging;
-- share-card generation/download;
-- public Web Push alert controls in the navbar;
-- light/dark theme support.
+Latest relevant commits:
 
-The old idea of a separate homepage alerts card is no longer the desired layout. Alert controls live in the
-navbar so the map content moves up naturally.
+- `4506ce6` — `chore: align Supabase migration history`
+- `8b72f00` — `security: harden admin sessions and notifications`
+- Earlier major release commit: `1327860` — `feat: add PWA install experience`
 
-## 5. NCR map contract
+The security work was developed on branch:
 
-The NCR map uses SVG and real geographic boundaries. A previously fragile area was gesture rendering:
-CSS compositor transforms caused blurry/incomplete rendering during pinch zoom on Safari. The accepted fix
-uses native SVG transforms for the map content. Do not casually replace that interaction path with a CSS
-`translate3d()/scale()` snapshot approach.
+- `security/astra-audit`
 
-Map behavior to preserve includes:
+Keep that branch and the security backup stash temporarily until the Production deployment has been stable for a while.
 
-- sharp rendering while zooming/panning;
-- wheel/pointer behavior that does not accidentally scroll the page when the map owns the gesture;
-- sensible zoom limits/reset behavior;
-- blank-map deselection;
-- keyboard/accessibility contracts;
-- all 17 logical LGUs represented correctly.
+---
 
-See `src/components/NcrInteractiveMap.tsx`, `src/lib/ncrMapInteraction.ts`, and their tests before changing
-interaction math.
+# 3. MAIN TECHNOLOGY STACK
 
-## 6. Collector policy
+Current application stack:
 
-The collector is deliberately conservative.
+- Next.js 15 App Router
+- React 19
+- TypeScript
+- Tailwind CSS
+- Lucide icons
+- Supabase / PostgreSQL for durable hosted state
+- local JSON/storage fallback where designed
+- Node/TypeScript collector
+- Cheerio for parsing
+- Vitest
+- ESLint 9 flat config
+- Web Push / Push API / Notifications API
+- PWA service worker
+- Vercel deployment
 
-Current policy:
+Package/runtime direction:
 
-- Tier 3 media collection is the operational path.
-- Rappler and GMA are the intended live Tier 3 sources in the current product state.
-- Tier 1/2 adapters remain unfinished/disabled and must not be silently enabled.
-- Parsing/normalization requires enough explicit evidence to identify the relevant LGU, date, education scope,
-  sector, and suspension action.
-- Stale, ambiguous, conflicting, malformed, or unprovenanced material must not become a confident public
-  suspension.
-- Corroboration can strengthen confidence, but uncertainty must remain visible when evidence is insufficient.
-- Lifecycle/freshness handling prevents obsolete notices from remaining live indefinitely.
+- Node 22.x
+- npm
+- strict TypeScript
 
-Important implementation areas are under `src/collector/`, `src/lib/suspensions/`, `src/lib/freshness.ts`,
-`src/lib/publicNcrProjection.ts`, and the collector/storage tests.
+Do not replace major libraries simply for novelty.
 
-## 7. Admin console
+---
 
-The protected admin/collector surface supports operational work such as:
+# 4. GEOGRAPHIC SCOPE
 
-- running/observing the collector;
-- viewing collector diagnostics/logs;
-- reviewing admin/bootstrap state;
-- manually publishing/removing/undoing suspension changes through protected flows;
-- audit history;
-- notification management and recent manual-broadcast history.
+Class Status is NCR-only.
 
-Do not bypass the existing server-side authorization, session, CSRF, Origin, namespace, or validation boundaries
-for convenience. A UI problem should not be “fixed” by weakening the authoritative mutation path.
+It supports all **17 Metro Manila LGUs**:
 
-## 8. Web Push and manual notifications
+1. Caloocan
+2. Las Piñas
+3. Makati
+4. Malabon
+5. Mandaluyong
+6. Manila
+7. Marikina
+8. Muntinlupa
+9. Navotas
+10. Parañaque
+11. Pasay
+12. Pasig
+13. Pateros
+14. Quezon City
+15. San Juan
+16. Taguig
+17. Valenzuela
 
-The notification system contains several distinct layers:
+Geographic data was based on PSA / GeoRiskPH municipal boundaries and checked against PSGC expectations.
 
-- public subscription/config/preferences endpoints;
-- service-worker push display/click behavior;
-- persistent subscriptions/events/deliveries in Supabase;
-- dispatch/retry/outbox behavior;
-- status-change notification logic;
-- protected administrator manual broadcasts;
-- manual recipient preview/history.
+Important map details:
 
-### Important current behavior
+- SVG-based NCR map
+- Manila geometry dissolved correctly
+- Caloocan handled as MultiPolygon
+- 17 LGUs visible on initial map experience
+- zoom / pan / reset behavior preserved
+- simple click/tap must not be mistaken for drag
+- labels remain sharp through native SVG transforms
 
-Recipient preview is an **administrator convenience**, not the authority that determines who receives a
-broadcast. The authoritative recipient calculation happens when the broadcast is created.
+---
 
-Therefore, if the preview-count store is temporarily unavailable, the preview route can safely return
-`available: false` / `recipientCount: null`, and the admin UI may continue to a confirmation that says the
-recipient count is unavailable. Validation/security errors must still fail normally. The actual send/create
-endpoint remains protected and authoritative.
+# 5. CORE PUBLIC EXPERIENCE
 
-Do not change this back into “preview must succeed or sending is impossible” without a strong reason; that was
-a real Production regression during the notification rollout.
+The application is mobile-first and map-first.
 
-Relevant areas include:
+Important public UX includes:
 
-- `src/app/api/admin/notifications/preview/route.ts`
-- `src/app/api/admin/notifications/route.ts`
-- `src/app/collector/AdminCustomNotifications.tsx`
-- `src/lib/admin/notifications.ts`
-- `src/lib/notifications/`
-- notification migrations under `supabase/migrations/`
-- notification-focused tests under `tests/`
+- interactive NCR map
+- LGU selection
+- quick search
+- class suspension status
+- evidence/source information
+- school finder
+- About page
+- Sources page
+- install/PWA guidance
+- notification bell in navbar
+- responsive desktop/mobile behavior
 
-## 9. Database migration state and discipline
+The interface must remain careful with wording.
 
-The repository contains a long forward migration history. Recent reliability/notification work added migrations
-for collector freshness, published status history, Web Push, manual broadcasts, and the manual-notification
-history grouping fix.
+Never state that classes are definitely ongoing merely because no suspension is currently verified.
 
-The grouping-fix migration is:
+Prefer conservative wording when evidence is missing or uncertain.
 
-`supabase/migrations/20260905103000_fix_manual_notification_history_grouping.sql`
+---
 
-It exists because the initial history query grouped a derived relation too loosely for PostgreSQL. Treat that as
-a regression lesson: when aggregating derived relations, explicitly group every selected non-aggregate value
-required by PostgreSQL rather than relying on functional-dependency inference that no longer applies.
+# 6. ROUTES / PUBLIC SURFACES
 
-Rules for future DB changes:
+Important routes include:
 
-- add a new forward migration;
-- do not rewrite an already-applied migration to “fix Production”;
-- verify grants/revokes, `security definer`, explicit `search_path`, proof checks, and namespace boundaries;
-- add regression tests when practical;
-- distinguish “migration exists in Git” from “migration is confirmed applied in Production”.
+- `/`
+- `/sources`
+- `/about`
+- `/install`
+- `/collector`
+- `/collector/login`
 
-## 10. Service worker / PWA boundary
+Important APIs include or have included:
 
-The service worker caches only safe static assets. `/api/`, `/collector/`, and `/auth/` are network-only by
-design. Preserve that boundary so private, mutable, or authentication-sensitive responses cannot be served
-from stale cache.
+- `/api/lgus`
+- `/api/suspensions`
+- `/api/schools`
+- `/api/demo-mode`
+- `/api/share/ncr`
 
-The service worker also handles Web Push display and notification-click navigation.
+The exact repository is authoritative if routes have evolved.
 
-## 11. Testing and quality gates
+---
 
-Package scripts define the standard gates:
+# 7. DATA / PUBLICATION SAFETY MODEL
 
-```bash
-npm run lint
-npm test
-npm run build
-```
+Class Status is intentionally conservative.
 
-Use targeted Vitest runs while iterating, then run the full relevant gates before marking non-trivial work done.
-For database/runtime changes, local green tests are necessary but not sufficient evidence that Production is
-healthy.
+A suspension should not be published merely because some text vaguely appears to mention cancellations.
 
-## 12. Source-of-truth order
+The collector / normalizer expects sufficient information such as:
 
-When investigating a question, use this order:
+- LGU
+- effective date
+- affected levels
+- sector
+- action
+- provenance/source
 
-1. current implementation + tests;
-2. current migrations/schema contracts;
-3. this `PROJECT_CONTEXT.md` for durable project state;
-4. `PRODUCT.md` for product/UX intent;
-5. `docs/ARCHITECTURE.md` for public-safe architecture and environment boundaries;
-6. `ENGINEERING_HISTORY.md` for past incidents and why decisions exist;
-7. `KNOWN_ISSUES.md` for unresolved or verification-needed items;
-8. old chat messages only as historical evidence, never as stronger truth than current code/Production evidence.
+Important safety behavior:
 
-## 13. Current engineering posture
+- stale records are held
+- ambiguous records are held
+- conflicting records are held
+- malformed records are held
+- unprovenanced records are held
+- unknown schools/scopes fail closed
+- restricted wording must not accidentally broaden into an LGU-wide suspension
+- corrections/removals update the final published state
+- same-day history snapshots can be replaced by corrected data
 
-The project is beyond the prototype stage. Treat changes as Production-facing unless clearly isolated to local
-development. Prefer regression-safe, tested, minimal changes over rewrites.
+The system prioritizes avoiding a false public suspension over maximizing automatic publication.
 
-The immediate mindset for the recently added reliability/notification features is **stabilize and verify**:
-make sure migrations, runtime behavior, delivery behavior, and admin UX agree in Production before adding more
-complexity.
+---
+
+# 8. COLLECTOR MODEL
+
+Only **Tier 3** is operational.
+
+Tier 1 and Tier 2 remain intentionally disabled.
+
+Sources have included public media/source feeds such as:
+
+- GMA
+- Inquirer
+- Rappler
+
+Source parsing and collector behavior should remain fail-closed.
+
+Freshness handling:
+
+- durable `lastSuccessfulCheckAt`
+- only a fully successful Tier 3 check updates that timestamp
+- failed or partial attempts must not falsely refresh it
+
+Per-source health includes concepts such as:
+
+- Healthy
+- Partial
+- Delayed
+- Unknown
+
+The system distinguishes latest attempt from last success.
+
+---
+
+# 9. PUBLISHED HISTORY
+
+Published status history exists per:
+
+- LGU
+- effective date
+
+Behavior:
+
+- latest same-day snapshot replaces prior state
+- corrections/removals update the final history entry
+- local storage and Supabase-backed durable state are supported as designed
+
+---
+
+# 10. PUSH NOTIFICATIONS
+
+Class Status supports browser/PWA push notifications.
+
+Implemented behavior includes:
+
+- Push API
+- Notifications API
+- service worker
+- VAPID
+- anonymous subscription storage
+- dedupe by fingerprint
+- retries/backoff
+- invalid subscription cleanup
+- safe created/updated automatic events only
+- bounded, idempotent anonymous registration with shared Supabase rate-limit state (database and application live)
+
+Automatic notification copy is designed around concise factual suspension updates.
+
+Manual admin broadcasts use the exact admin message body.
+
+Notification targeting supports:
+
+- all subscribers
+- selected LGUs
+
+Admin notification history is durable.
+
+---
+
+# 11. PWA / INSTALL EXPERIENCE
+
+The application is installable as a PWA.
+
+Behavior includes:
+
+- manifest
+- service worker
+- standalone/install behavior
+- install popup
+- mobile bottom-sheet style install prompt
+- desktop modal
+- suppression when already installed
+- dismissal cooldown
+- `/install` guide
+
+Critical caching rule:
+
+**Dynamic class status information must remain network-fresh.**
+
+Do not cache API/auth/admin/collector traffic in a way that can show stale or private state.
+
+The service worker was hardened so API/auth/admin/collector paths are network-only.
+
+---
+
+# 12. ADMIN / COLLECTOR SECURITY MODEL
+
+The `/collector` area is protected.
+
+Security work specifically hardened:
+
+- Supabase Auth session validation
+- admin guard/session recreation
+- revoked/expired/replaced JWT handling
+- competing login serialization
+- logout revocation
+- request body streaming/caps
+- malformed UTF-8/JSON rejection
+- internal error leakage
+- CSRF/origin/request validation
+- notification subscription validation
+- notification namespace isolation
+- queue starvation protection
+- delivery namespace ownership
+- service worker navigation safety
+- collector fail-closed behavior
+- external response cancellation/size handling
+- GitHub Actions SHA pinning
+
+Do not weaken these controls during future work.
+
+---
+
+# 13. SECURITY AUDIT — FINAL STATUS
+
+A dedicated security audit was completed.
+
+Confirmed/fixed issues included:
+
+- revoked Supabase JWT could recreate admin guard
+- request bodies could be buffered too far before limit enforcement
+- admin internal errors could leak
+- arbitrary stored push endpoint could reach `web-push`
+- foreign/inactive notification rows could starve a namespace queue
+- delivery updates lacked sufficient namespace predicates
+- delayed retry could send an expired suspension notification
+- unknown-school/restricted wording could broaden a notice
+- discarded media responses could retain resources
+- protocol-relative notification destinations could leave origin
+
+No confirmed:
+
+- VAPID private-key leak
+- anonymous admin mutation bypass
+- SQL injection
+- service-worker caching of private/API data
+
+Residual/operational risks documented for future consideration include:
+
+- distributed push-registration abuse beyond a single platform client identity
+- legacy malformed subscriptions are handled when encountered rather than fully pre-cleaned
+- queued notification state is not always fully re-resolved against every later authoritative mutation
+- external source/provider infrastructure remains a dependency
+
+See repository `docs/KNOWN_ISSUES.md` for current details.
+
+---
+
+# 14. SUPABASE PRODUCTION
+
+Production Supabase project:
+
+- Project name: `ClassStatus`
+- Project ref: `fyupnqsdfkqfrjcypues`
+- Region: `ap-southeast-1`
+
+Important final security migrations:
+
+- `20260905161059_prevent_admin_session_reactivation.sql`
+- `20260905161120_harden_notification_namespace.sql`
+
+Both were verified as applied in Production through Supabase CLI migration history and read-only schema inspection on 2026-09-14.
+
+The live admin session hardening checks the actual Supabase Auth session and expiry at the DB boundary.
+
+The live notification store validates:
+
+- provider endpoint
+- endpoint length
+- p256dh key shape
+- auth key shape
+- canonical LGU list
+- deployment namespace
+- active subscription state
+
+It also applies namespace isolation to:
+
+- preference updates
+- deactivation
+- event creation
+- pending queue listing
+- delivery recording
+
+Private notification storage execution remains restricted.
+
+Migration `20260914090000_rate_limit_push_registration.sql` adds private, expiring, namespace-scoped counters for
+anonymous registration. It was applied to and verified in Production on 2026-09-14 before the matching route code,
+which was then deployed and verified live on the same date.
+
+---
+
+# 15. SUPABASE MIGRATION HISTORY
+
+Migration-history drift was corrected without falsely marking real Production migrations as reverted.
+
+Historical local migration filenames were aligned with actual Production versions.
+
+Important aligned historical versions include:
+
+- `20260830141958_add_live_admin_operations.sql`
+- `20260830150633_fix_active_presence_heartbeat.sql`
+- `20260830154124_remove_live_operations.sql`
+- `20260904231814_allow_manual_notification_family_fingerprints.sql`
+
+The `20260904231814` migration contains the real Production SQL for allowing both automatic and manual family fingerprints.
+
+Final Supabase CLI dry-run reported:
+
+> Remote database is up to date.
+
+After applying `20260914090000_rate_limit_push_registration.sql` on 2026-09-14, a fresh Supabase CLI dry run again
+reported that the remote database is up to date.
+
+Do not casually rename or repair these migration versions.
+
+---
+
+# 16. SECURITY ADVISOR NOTES
+
+Supabase security advisors still surface some warnings/info that are not automatically vulnerabilities.
+
+Examples:
+
+- RLS enabled with no policy on internal tables
+- SECURITY DEFINER functions callable by roles that are intentionally routed through guarded wrappers
+- leaked-password protection disabled
+
+Interpret these in context before modifying permissions.
+
+Do not blindly “fix” advisor warnings if doing so would break the intentional guarded RPC architecture.
+
+Leaked password protection can be enabled separately as an Auth hardening improvement.
+
+---
+
+# 17. VALIDATION STATUS
+
+Security/audit validation included:
+
+- focused auth/request tests
+- notification tests
+- full Vitest suite
+- TypeScript checks
+- ESLint
+- Production build
+- npm audit
+- diff checks
+- local HTTP smoke tests
+- migration regression tests
+
+Latest lint result during final deployment:
+
+- 0 errors
+- 47 non-blocking warnings
+
+Those warnings are mostly unused imports/variables and are not security blockers.
+
+Before Production push, tests and build were run successfully.
+
+---
+
+# 18. PRODUCTION DEPLOYMENT
+
+Repository:
+
+- `cnlycruz/ClassStatus`
+
+Main branch contains the final security patch and migration alignment.
+
+Production hosting:
+
+- Vercel
+
+The final Vercel status for the latest `main` deployment was verified as:
+
+- SUCCESS
+
+Therefore:
+
+**Class Status v1 is finished and deployed.**
+
+Future work is maintenance/enhancement, not completion of the original v1.
+
+---
+
+# 19. OPEN-SOURCE / REPOSITORY PREPARATION
+
+Repository has been prepared for public/open-source work.
+
+Files added during open-source preparation include concepts such as:
+
+- `LICENSE`
+- `CONTRIBUTING.md`
+- `SECURITY.md`
+- `THIRD_PARTY_NOTICES.md`
+- `docs/ARCHITECTURE.md`
+- issue templates
+
+Current license history includes MIT.
+
+Past released MIT versions remain MIT.
+
+Any future licensing changes must preserve applicable third-party notices and already-granted rights.
+
+---
+
+# 20. IMPORTANT UX / IMPLEMENTATION DETAILS ALREADY FIXED
+
+Do not accidentally regress these:
+
+- navbar logos no longer receive an extra rounded clipping mask
+- light/dark branding switches without layout shift
+- map click/tap works on Windows without drag capture stealing clicks
+- desktop map sizing has a tall/portrait-friendly presentation
+- theme switching was performance-optimized
+- excessive route prefetching was reduced
+- oversized logo assets were replaced
+- PWA install prompt has cooldown/suppression logic
+- notification popup is centered and mobile-scroll-safe
+- homepage notification card was removed in favor of navbar bell
+- mayor data for all 17 NCR LGUs was refreshed from DILG-NCR references
+
+---
+
+# 21. PROJECT DEVELOPMENT PRINCIPLES
+
+When continuing the project:
+
+1. Inspect the current repository before editing.
+2. Preserve working architecture.
+3. Avoid unnecessary rewrites.
+4. Prefer surgical changes.
+5. Protect conservative publication behavior.
+6. Treat class-status freshness as safety-critical.
+7. Preserve mobile-first UX.
+8. Preserve map accuracy and all 17 LGUs.
+9. Preserve security controls.
+10. Run relevant tests/build after meaningful changes.
+11. Do not expose secrets.
+12. Do not treat an empty/no-evidence state as proof that classes are ongoing.
+
+---
+
+# 22. USER / WORKFLOW PREFERENCES FOR THIS PROJECT
+
+For development assistance:
+
+- Prefer doing setup/testing/deployment automatically when tooling permits.
+- Avoid asking the user to perform unnecessary manual steps.
+- When manual commands are required, give exact copy-paste Windows CMD commands.
+- Keep explanations direct and practical.
+- Avoid changing working UI or architecture without a reason.
+- For security work, use the existing security skill/instructions and distinguish confirmed issues from theoretical risks.
+
+---
+
+# 23. WHAT TO DO IN A NEW ACCOUNT
+
+Upload this file to the new ChatGPT account and say:
+
+> This is the current product context for my Class Status project. Read it fully and use it as the starting context. The project is already finished and deployed. Do not restart the architecture or assume old unfinished tasks are still pending. When coding, inspect the actual repository before making changes.
+
+For coding work, also give the new account access to the GitHub repository or clone.
+
+The repository itself remains the ultimate technical source of truth because code can change after this handoff was generated.
+
+---
+
+# 24. FINAL ONE-LINE STATE
+
+**Class Status is a completed, security-audited, Supabase-backed, PWA-enabled NCR class suspension platform with all 17 LGUs, deployed successfully to Production on Vercel as of 2026-09-06.**

@@ -6,8 +6,9 @@ import type { LGUId, SuspensionRecord } from "@/types";
 import { ALL_LGU_IDS } from "@/data/lgus";
 import type { DeploymentNamespace } from "@/lib/storage";
 import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
-import { manualNotificationStoreRpc, notificationStoreRpc } from "./supabaseRpc";
+import { manualNotificationStoreRpc, notificationStoreRpc, registerPushSubscriptionRpc } from "./supabaseRpc";
 import { notificationFamilyFingerprint, notificationFingerprint } from "./fingerprint";
+import { PUSH_REGISTRATION_RATE_POLICY, PushRegistrationRateLimitError } from "./registrationSecurity";
 import { validatePushSubscription } from "./subscriptionValidation";
 import type { ManualBroadcastHistoryEntry, NotificationDelivery, NotificationEvent, NotificationEventKind, PendingPushDelivery, PushSubscriptionRecord } from "./types";
 
@@ -16,6 +17,16 @@ interface LocalNotificationDocument {
   subscriptions: PushSubscriptionRecord[];
   events: NotificationEvent[];
   deliveries: NotificationDelivery[];
+  registrationLimits?: LocalRegistrationLimit[];
+}
+
+interface LocalRegistrationLimit {
+  identityHash: string;
+  windowKind: "burst" | "daily";
+  windowStartedAt: string;
+  attemptCount: number;
+  newEndpointCount: number;
+  updatedAt: string;
 }
 
 const EMPTY: LocalNotificationDocument = { schemaVersion: 1, subscriptions: [], events: [], deliveries: [] };
@@ -80,6 +91,79 @@ export async function savePushSubscription(input: { endpoint: string; p256dh: st
     return { ...created };
   });
   const data = await notificationStoreRpc<{ id: string; createdAt: string; updatedAt: string }>("save-subscription", { endpoint: value.endpoint, p256dh: value.p256dh, auth: value.auth, lguIds: value.lguIds, now });
+  return { id: data.id, deploymentNamespace, ...value, active: true, createdAt: data.createdAt, updatedAt: data.updatedAt };
+}
+
+function consumeLocalRegistrationLimit(
+  state: LocalNotificationDocument,
+  identityHash: string,
+  isNewEndpoint: boolean,
+  now: Date
+): number | undefined {
+  const nowMs = now.getTime();
+  const burstMs = PUSH_REGISTRATION_RATE_POLICY.burstWindowSeconds * 1000;
+  const burstStart = new Date(Math.floor(nowMs / burstMs) * burstMs).toISOString();
+  const dailyStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+  state.registrationLimits = (state.registrationLimits || []).filter((entry) => Date.parse(entry.windowStartedAt) >= nowMs - 2 * 24 * 60 * 60 * 1000);
+
+  const consume = (windowKind: "burst" | "daily", windowStartedAt: string) => {
+    let entry = state.registrationLimits!.find((item) => item.identityHash === identityHash && item.windowKind === windowKind && item.windowStartedAt === windowStartedAt);
+    if (!entry) {
+      entry = { identityHash, windowKind, windowStartedAt, attemptCount: 0, newEndpointCount: 0, updatedAt: now.toISOString() };
+      state.registrationLimits!.push(entry);
+    }
+    entry.attemptCount += 1;
+    if (isNewEndpoint) entry.newEndpointCount += 1;
+    entry.updatedAt = now.toISOString();
+    return entry;
+  };
+
+  const burst = consume("burst", burstStart);
+  const daily = consume("daily", dailyStart);
+  let retryAfter = 0;
+  if (burst.attemptCount > PUSH_REGISTRATION_RATE_POLICY.burstAttemptLimit
+      || (isNewEndpoint && burst.newEndpointCount > PUSH_REGISTRATION_RATE_POLICY.burstNewEndpointLimit)) {
+    retryAfter = Math.max(retryAfter, Math.ceil((Date.parse(burstStart) + burstMs - nowMs) / 1000));
+  }
+  if (daily.attemptCount > PUSH_REGISTRATION_RATE_POLICY.dailyAttemptLimit
+      || (isNewEndpoint && daily.newEndpointCount > PUSH_REGISTRATION_RATE_POLICY.dailyNewEndpointLimit)) {
+    retryAfter = Math.max(retryAfter, Math.ceil((Date.parse(dailyStart) + 24 * 60 * 60 * 1000 - nowMs) / 1000));
+  }
+  return retryAfter > 0 ? retryAfter : undefined;
+}
+
+export async function registerPushSubscription(
+  input: { endpoint: string; p256dh: string; auth: string; lguIds: LGUId[] },
+  identityHash: string
+): Promise<PushSubscriptionRecord> {
+  validatePushSubscription(input);
+  if (!/^[0-9a-f]{64}$/.test(identityHash)) throw new Error("notification-registration-identity-invalid");
+  const value = { ...input, lguIds: cleanLguIds(input.lguIds) };
+  const deploymentNamespace = namespace();
+
+  if (getStorageDriver() === "local-json") return mutateLocal((state) => {
+    const prior = state.subscriptions.find((subscription) => subscription.deploymentNamespace === deploymentNamespace && subscription.endpoint === value.endpoint);
+    const now = new Date();
+    const retryAfter = consumeLocalRegistrationLimit(state, identityHash, !prior, now);
+    if (retryAfter) throw new PushRegistrationRateLimitError(retryAfter);
+    if (prior) {
+      Object.assign(prior, value, { active: true, updatedAt: now.toISOString() });
+      return { ...prior };
+    }
+    const created: PushSubscriptionRecord = { id: randomUUID(), deploymentNamespace, ...value, active: true, createdAt: now.toISOString(), updatedAt: now.toISOString() };
+    state.subscriptions.push(created);
+    return { ...created };
+  });
+
+  const data = await registerPushSubscriptionRpc<{ rateLimited: boolean; retryAfter?: number; id?: string; createdAt?: string; updatedAt?: string }>({
+    endpoint: value.endpoint,
+    p256dh: value.p256dh,
+    auth: value.auth,
+    lguIds: value.lguIds,
+    identityHash,
+  });
+  if (data.rateLimited) throw new PushRegistrationRateLimitError(Math.max(1, Math.ceil(data.retryAfter || 1)));
+  if (!data.id || !data.createdAt || !data.updatedAt) throw new Error("notification-storage-unavailable");
   return { id: data.id, deploymentNamespace, ...value, active: true, createdAt: data.createdAt, updatedAt: data.updatedAt };
 }
 

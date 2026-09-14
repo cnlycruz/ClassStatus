@@ -44,6 +44,7 @@ Database and authorization contracts evolve through forward migrations in `supab
 - Hosted runtime code must preserve the existing least-privilege RPC and namespace boundaries.
 - Collector execution must preserve leases, proof checks, provenance, conflict handling, and publication safeguards.
 - Authentication, CSRF/origin checks, request limits, and Web Push recipient isolation are security boundaries, not optional application conveniences.
+- Anonymous Web Push registration uses Vercel's platform-derived client address only after normalization and HMAC hashing, then consumes atomic burst/daily counters through a private Supabase function. Migration `20260914090000_rate_limit_push_registration.sql` and the matching route code were verified live on 2026-09-14; the migration must remain deployed before that route version.
 - Administrator RPCs also require the JWT's matching live `auth.sessions` row. Starting a session guard cannot revive a revoked, expired, or replaced login or extend that login's original lifetime; a fresh sign-in creates a new Auth session. These guarantees require migration `20260905161059_prevent_admin_session_reactivation.sql` to be applied.
 
 For product behavior and accessibility requirements, see [PRODUCT.md](../PRODUCT.md). For current engineering state and historical constraints, see [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) and [ENGINEERING_HISTORY.md](ENGINEERING_HISTORY.md).

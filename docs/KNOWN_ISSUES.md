@@ -3,56 +3,29 @@
 This file contains only **currently unresolved, intentionally limited, or Production-verification-dependent**
 items. Historical fixed bugs belong in `ENGINEERING_HISTORY.md`.
 
-Last reviewed: 2026-09-06.
+Last reviewed: 2026-09-14.
 
 ## Current severity summary
 
 No open Production-blocking defect is confirmed by the repository/context review that created this file.
 The items below are limitations or things that must be verified against the live environment when relevant.
 
-## 1. Production migration parity
+## 1. Push-registration browser verification and distributed abuse remain limited
 
-**Type:** VERIFY IN PRODUCTION
+**Type:** VERIFY IN PRODUCTION / RESIDUAL AVAILABILITY RISK
 
-Recent notification/reliability migrations exist in `main`, including:
+The repository now rate-limits anonymous push registration through atomic, namespace-scoped Supabase counters
+keyed by an HMAC digest of Vercel's platform client-IP header. New-endpoint creation and total retries have separate
+burst and daily ceilings, duplicate endpoints remain idempotent, and expired counter rows are removed automatically.
 
-- public collector freshness;
-- published status history;
-- Web Push notifications;
-- manual admin broadcasts;
-- manual-notification history grouping fix.
+Migration `20260914090000_rate_limit_push_registration.sql` was applied to and verified in Production on
+2026-09-14. The matching application code was deployed to Vercel Production on the same date. Controlled Production
+checks confirmed generic rejection of malformed JSON and an incorrect content type, with no related 5xx or RPC errors.
+A legitimate registration and duplicate retry still require a controlled browser subscription; do not fabricate a
+Production endpoint for this check. Distributed clients or a proxy placed in front of Vercel can still require a
+trusted proxy/WAF policy; do not replace the shared limiter with a process-local counter or caller-supplied IP header.
 
-Two reviewed security migrations are present only in the current working tree and are intentionally unapplied:
-
-- `20260905161059_prevent_admin_session_reactivation.sql`;
-- `20260905161120_harden_notification_namespace.sql`.
-
-Git cannot prove that every migration is applied to the live Supabase Production database.
-
-### When to investigate
-
-If admin bootstrap/history, recipient preview, subscription storage, notification dispatch, or a newly added RPC
-behaves differently in Production than in tests.
-
-### Correct first response
-
-Before changing application code, compare the live migration/schema/RPC state with the migrations in `main`.
-Do not create a duplicate “fix” migration for a migration that simply was not deployed yet.
-
-## 2. Anonymous notification registration remains abuse-sensitive
-
-**Type:** CONFIRMED RESIDUAL AVAILABILITY RISK
-
-Provider/key validation prevents arbitrary push destinations, but an automated client can still create many
-syntactically valid, distinct endpoints under an approved push-provider hostname. Origin and Fetch Metadata are
-browser-CSRF controls, not client identity or rate limiting. This can grow subscription and delivery storage and
-amplify normal notification fanout.
-
-The deployment owner must choose trusted-edge registration controls plus namespace capacity/retention policy.
-Do not implement a process-local counter, trust caller-supplied IP headers, or impose an arbitrary global quota
-that locks out students behind shared school networks.
-
-## 3. Recipient-preview degraded mode is intentional
+## 2. Recipient-preview degraded mode is intentional
 
 **Type:** EXPECTED DEGRADED BEHAVIOR, NOT BY ITSELF A BUG
 
@@ -71,7 +44,7 @@ broadcast is created.
 
 Do not restore the old behavior where a preview-count outage automatically blocks a safe authoritative send.
 
-## 4. Notification delivery requires runtime configuration and real subscriptions
+## 3. Notification delivery requires runtime configuration and real subscriptions
 
 **Type:** PRODUCTION/ENVIRONMENT DEPENDENCY
 
@@ -90,7 +63,7 @@ When troubleshooting, separate these stages:
 
 Do not collapse all of these into “notifications are broken.”
 
-## 5. Collector source coverage is intentionally limited
+## 4. Collector source coverage is intentionally limited
 
 **Type:** PRODUCT LIMITATION / INTENTIONAL
 
@@ -102,7 +75,7 @@ somewhere the active collector does not yet cover.
 
 Do not solve this by silently enabling incomplete adapters or by lowering evidence requirements.
 
-## 6. External source HTML can change
+## 5. External source HTML can change
 
 **Type:** ONGOING OPERATIONAL RISK
 
@@ -118,7 +91,7 @@ When a source stops producing records:
 
 Do not weaken the normalizer globally because one publisher changed markup.
 
-## 7. Documentation can lag implementation
+## 6. Documentation can lag implementation
 
 **Type:** PROCESS RISK
 

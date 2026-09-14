@@ -20,6 +20,16 @@ export async function notificationStoreRpc<T>(operation: string, payload: Record
   return data as T;
 }
 
+export async function registerPushSubscriptionRpc<T>(payload: Record<string, unknown>): Promise<T> {
+  const namespace = getDeploymentNamespace();
+  const { data, error } = await createPublicSupabaseClient().rpc(
+    `classstatus_${namespace}_worker_register_push_subscription`,
+    createCollectorCapability("logs.append", payload)
+  );
+  if (error) throw new Error("notification-storage-unavailable");
+  return data as T;
+}
+
 export async function manualNotificationStoreRpc<T>(operation: string, payload: Record<string, unknown>): Promise<T> {
   const namespace = getDeploymentNamespace();
   const { data, error } = await createPublicSupabaseClient().rpc(

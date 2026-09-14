@@ -26,8 +26,9 @@ describe("notification namespace security in executable SQL", () => {
       await db.exec(fs.readFileSync(path.join(process.cwd(), "supabase/migrations", file), "utf8"));
     }
     await db.exec(fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260905161120_harden_notification_namespace.sql"), "utf8"));
+    await db.exec(fs.readFileSync(path.join(process.cwd(), "supabase/migrations/20260914090000_rate_limit_push_registration.sql"), "utf8"));
   }, 30_000);
-  beforeEach(async () => { await db.exec("truncate public.classstatus_push_subscriptions, public.classstatus_notification_events, public.classstatus_notification_deliveries cascade;"); });
+  beforeEach(async () => { await db.exec("truncate public.classstatus_push_subscriptions, public.classstatus_notification_events, public.classstatus_notification_deliveries, public.classstatus_push_registration_limits cascade;"); });
   afterAll(async () => { await db?.close(); });
 
   it("selects a production batch before applying the limit to preview backlog", async () => {
@@ -79,5 +80,61 @@ describe("notification namespace security in executable SQL", () => {
   it("does not grant anonymous access to the private notification function or tables", async () => {
     const result = await db.query<{ function_execute: boolean; table_select: boolean; table_insert: boolean }>("select has_function_privilege('anon', 'classstatus_private.notification_store(text,jsonb)', 'execute') as function_execute, has_table_privilege('anon', 'public.classstatus_push_subscriptions', 'select') as table_select, has_table_privilege('anon', 'public.classstatus_push_subscriptions', 'insert') as table_insert");
     expect(result.rows[0]).toEqual({ function_execute: false, table_select: false, table_insert: false });
+  });
+
+  it("atomically limits distinct registrations while allowing ordinary duplicates", async () => {
+    await db.query("select set_config('classstatus.notification_registration_worker', 'production', false)");
+    const base = { p256dh: "A".repeat(87), auth: "B".repeat(22), lguIds: ["manila"], identityHash: "c".repeat(64) };
+    for (let index = 0; index < 30; index += 1) {
+      const result = (await db.query<{ result: { rateLimited: boolean } }>(
+        "select classstatus_private.register_push_subscription('production', $1::jsonb) as result",
+        [JSON.stringify({ ...base, endpoint: `https://fcm.googleapis.com/fcm/send/rate-${index}` })]
+      )).rows[0].result;
+      expect(result.rateLimited).toBe(false);
+    }
+    for (let retry = 0; retry < 2; retry += 1) {
+      const result = (await db.query<{ result: { rateLimited: boolean; retryAfter: number } }>(
+        "select classstatus_private.register_push_subscription('production', $1::jsonb) as result",
+        [JSON.stringify({ ...base, endpoint: "https://fcm.googleapis.com/fcm/send/rate-blocked" })]
+      )).rows[0].result;
+      expect(result).toMatchObject({ rateLimited: true, retryAfter: expect.any(Number) });
+    }
+    const duplicate = (await db.query<{ result: { rateLimited: boolean } }>(
+      "select classstatus_private.register_push_subscription('production', $1::jsonb) as result",
+      [JSON.stringify({ ...base, endpoint: "https://fcm.googleapis.com/fcm/send/rate-0" })]
+    )).rows[0].result;
+    expect(duplicate.rateLimited).toBe(false);
+  });
+
+  it("cannot bypass a burst limit with concurrent distinct registrations", async () => {
+    await db.query("select set_config('classstatus.notification_registration_worker', 'production', false)");
+    const base = { p256dh: "A".repeat(87), auth: "B".repeat(22), lguIds: ["manila"], identityHash: "d".repeat(64) };
+    const results = await Promise.all(Array.from({ length: 40 }, async (_, index) => (
+      await db.query<{ result: { rateLimited: boolean } }>(
+        "select classstatus_private.register_push_subscription('production', $1::jsonb) as result",
+        [JSON.stringify({ ...base, endpoint: `https://fcm.googleapis.com/fcm/send/concurrent-${index}` })]
+      )
+    ).rows[0].result));
+    expect(results.filter((result) => !result.rateLimited)).toHaveLength(30);
+    expect(results.filter((result) => result.rateLimited)).toHaveLength(10);
+  });
+
+  it("rejects malformed limiter payloads and the wrong namespace context", async () => {
+    const valid = { endpoint: "https://fcm.googleapis.com/fcm/send/strict", p256dh: "A".repeat(87), auth: "B".repeat(22), lguIds: ["manila"], identityHash: "e".repeat(64) };
+    await db.query("select set_config('classstatus.notification_registration_worker', '', false)");
+    await expect(db.query("select classstatus_private.register_push_subscription('production', $1::jsonb)", [JSON.stringify(valid)]))
+      .rejects.toThrow("notification-proof-invalid");
+    await db.query("select set_config('classstatus.notification_registration_worker', 'preview', false)");
+    await expect(db.query("select classstatus_private.register_push_subscription('production', $1::jsonb)", [JSON.stringify(valid)]))
+      .rejects.toThrow("notification-proof-invalid");
+    await expect(db.query("select classstatus_private.register_push_subscription('preview', $1::jsonb)", [JSON.stringify({ ...valid, unexpected: true })]))
+      .rejects.toThrow("notification-payload-invalid");
+  });
+
+  it("keeps limiter state namespace-scoped and inaccessible to anonymous SQL", async () => {
+    const result = (await db.query<{ function_execute: boolean; table_select: boolean }>(
+      "select has_function_privilege('anon', 'classstatus_private.register_push_subscription(text,jsonb)', 'execute') as function_execute, has_table_privilege('anon', 'public.classstatus_push_registration_limits', 'select') as table_select"
+    )).rows[0];
+    expect(result).toEqual({ function_execute: false, table_select: false });
   });
 });

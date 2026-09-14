@@ -63,6 +63,9 @@ const startArgs = `'${csrfDigest}','${loginDigest}'`;
 afterEach(async () => { await Promise.all(databases.splice(0).map((db) => db.close())); });
 
 describe("admin session database replay boundary", () => {
+  // This cold PGlite fixture installs the durable schema and runtime security functions.
+  // Under concurrent migration-heavy files it can exceed Vitest's 5s default despite
+  // consistently completing in isolation, so keep the allowance local to this setup.
   it("demonstrates the historical direct-RPC logout bypass with an existing admin JWT", async () => {
     const db = await fixture();
     await rpc(db, "start_admin_session", startArgs);
@@ -72,7 +75,7 @@ describe("admin session database replay boundary", () => {
     await rpc(db, "start_admin_session", startArgs);
     const result = await rpc(db, "touch_admin_session", "false");
     expect(result.rows[0]).toMatchObject({ result: { sessionId } });
-  });
+  }, 10_000);
 
   it("rejects the same JWT at every session boundary after successful Auth sign-out", async () => {
     const db = await fixture();

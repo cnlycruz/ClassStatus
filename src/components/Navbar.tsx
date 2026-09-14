@@ -63,6 +63,7 @@ export const Navbar = React.memo(function Navbar() {
   const installState = useInstallState();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedLguId, setSelectedLguId] = useState<LGUId | null>(null);
+  const [themeMotionReady, setThemeMotionReady] = useState(false);
   const showsPublicAlerts = !pathname.startsWith("/collector") && !pathname.startsWith("/auth");
   const showsSchoolSearch = pathname === "/";
 
@@ -78,6 +79,11 @@ export const Navbar = React.memo(function Navbar() {
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setThemeMotionReady(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   const openSchoolSearch = () => {
     window.dispatchEvent(new Event("classstatus:open-school-search"));
@@ -182,11 +188,18 @@ export const Navbar = React.memo(function Navbar() {
             aria-label="Toggle Theme"
             className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
           >
-            {theme === "dark" ? (
-              <Sun className="h-4 w-4 text-amber-400" />
-            ) : (
-              <Moon className="h-4 w-4 text-slate-600" />
-            )}
+            <span className="relative flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden="true">
+              <Sun
+                className={`theme-toggle-icon absolute h-4 w-4 text-amber-400 transition-[transform,opacity] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-none ${
+                  themeMotionReady ? "" : "transition-none"
+                } ${theme === "dark" ? "rotate-0 scale-100 opacity-100" : "rotate-45 scale-75 opacity-0"}`}
+              />
+              <Moon
+                className={`theme-toggle-icon absolute h-4 w-4 text-slate-600 transition-[transform,opacity] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-none ${
+                  themeMotionReady ? "" : "transition-none"
+                } ${theme === "dark" ? "-rotate-45 scale-75 opacity-0" : "rotate-0 scale-100 opacity-100"}`}
+              />
+            </span>
           </button>
 
           {/* Mobile Menu Toggle Button */}

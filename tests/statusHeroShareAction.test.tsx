@@ -25,6 +25,7 @@ describe("public share-card action", () => {
     expect(html).toContain("sm:w-[13.75rem]");
     expect(html).toContain("sm:whitespace-nowrap");
     expect(html).not.toContain("Generating…");
+    expect(html).not.toContain("animate-share-card-download");
   });
 
   it("spins only the refresh icon while a manual dashboard refresh is active", () => {

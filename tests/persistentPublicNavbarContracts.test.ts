@@ -12,6 +12,8 @@ describe("persistent public navbar contracts", () => {
     expect(layout).toContain("<PublicAppShell>{children}</PublicAppShell>");
     expect(shell).toContain('"/", "/sources", "/about", "/install"');
     expect(shell).toContain("PUBLIC_PATHS.has(pathname) && <Navbar />");
+    expect(shell).toContain("<StartupSplash onComplete={dismissStartupSplash} />");
+    expect(shell).toContain("const hasShownStartupSplash = useRef(!isPublicPath)");
   });
 
   it("does not let individual public pages create their own navbar", () => {
@@ -36,5 +38,25 @@ describe("persistent public navbar contracts", () => {
 
     expect(navbar).toContain('w-[15ch] tabular-nums font-mono');
     expect(navbar).toContain('fallback="--:--:-- -- PHT"');
+  });
+
+  it("keeps startup branding scoped to an initial public shell mount", () => {
+    const shell = read("src", "components", "PublicAppShell.tsx");
+    const splash = read("src", "components", "StartupSplash.tsx");
+    const styles = read("src", "app", "globals.css");
+
+    expect(shell).toContain("hasShownStartupSplash.current = true");
+    expect(shell).not.toContain("window.location");
+    expect(splash).toContain('data-startup-splash');
+    expect(splash).toContain('aria-hidden="true"');
+    expect(splash).toContain('matchMedia("(prefers-reduced-motion: reduce)")');
+    expect(splash).toContain("reducedMotion ? 280 : 1_450");
+    expect(styles).toContain("@keyframes startup-handwriting-reveal");
+    expect(styles).toContain("@keyframes startup-handwriting-ink");
+    expect(styles).toContain("@keyframes startup-splash-dismiss");
+    expect(styles).toContain("safe-area-inset-top");
+    expect(styles).toContain(".startup-splash-wordmark");
+    expect(styles).toContain("pointer-events: none");
+    expect(styles).toContain("prefers-reduced-motion: reduce");
   });
 });

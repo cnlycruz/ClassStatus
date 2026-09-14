@@ -13,7 +13,6 @@ import {
   Download,
   HelpCircle,
   ListFilter,
-  LoaderCircle,
   Map,
   RefreshCw,
 } from "lucide-react";
@@ -45,6 +44,7 @@ export const StatusHero = React.memo(function StatusHero({
   const shareCardDownload = React.useRef<ReturnType<typeof createNcrShareCardDownloadController> | null>(null);
   const [isShareCardGenerating, setIsShareCardGenerating] = React.useState(false);
   const [shareCardError, setShareCardError] = React.useState(false);
+  const [downloadAnimationKey, setDownloadAnimationKey] = React.useState(0);
 
   if (!shareCardDownload.current) {
     shareCardDownload.current = createNcrShareCardDownloadController();
@@ -56,6 +56,7 @@ export const StatusHero = React.memo(function StatusHero({
     if (!controller || controller.isBusy()) return;
 
     setShareCardError(false);
+    setDownloadAnimationKey((current) => current + 1);
     setIsShareCardGenerating(true);
 
     try {
@@ -129,11 +130,13 @@ export const StatusHero = React.memo(function StatusHero({
               aria-describedby={shareCardError ? "share-card-download-error" : undefined}
               className="hero-touch-control flex min-h-11 w-full min-w-0 items-center justify-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-3 text-xs font-bold text-white transition-colors hover:border-white/40 hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:cursor-wait disabled:opacity-75 sm:w-[13.75rem] sm:whitespace-nowrap sm:px-4 sm:text-sm"
             >
-              {isShareCardGenerating ? (
-                <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin sm:h-4 sm:w-4" aria-hidden="true" />
-              ) : (
-                <Download className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" aria-hidden="true" />
-              )}
+              <Download
+                key={downloadAnimationKey}
+                className={`h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4 ${
+                  downloadAnimationKey > 0 ? "animate-share-card-download motion-reduce:animate-none" : ""
+                }`}
+                aria-hidden="true"
+              />
               <span className="sm:hidden">{isShareCardGenerating ? "Generating…" : "Share Card"}</span>
               <span className="hidden sm:inline">{isShareCardGenerating ? "Generating…" : "Download Share Card"}</span>
             </button>

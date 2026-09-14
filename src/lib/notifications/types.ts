@@ -31,6 +31,8 @@ export interface NotificationEvent {
   targetLguIds?: LGUId[];
   recipientCount?: number;
   manualRequestKey?: string;
+  /** History-only tombstone; the event and its delivery record remain durable. */
+  historyDeletedAt?: string;
   createdAt: string;
 }
 

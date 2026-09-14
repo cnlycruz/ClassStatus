@@ -72,6 +72,30 @@ sharpness, full-map rendering, selection, reset, and wheel behavior all remain c
 
 ---
 
+## 2026-09-14 — Mobile one-finger map pan pointer-capture regression
+
+**Status:** RESOLVED IN CODE; verify on physical iOS Safari and Android Chrome after deployment
+
+### Symptom
+
+One-finger map panning could advance for one movement and then stop until the user lifted and touched again,
+while two-finger pinch zoom continued to work.
+
+### Root cause and fix
+
+Commit `1640ffe` deferred pointer capture until the one-finger drag threshold was crossed. Mobile browsers could
+therefore take ownership of the gesture before the map captured its first contact. Restore capture on
+`pointerdown`, as in the earlier interaction implementation, while keeping movement-threshold state separate for
+tap-versus-drag selection suppression. The map’s scoped `touch-none`, native SVG transforms, and RAF scheduling
+remain unchanged.
+
+### Lesson
+
+Pointer capture is required to preserve the pointer stream; it must not be coupled to whether a gesture has moved
+far enough to suppress an LGU tap. Keep `pointercancel` cleanup on the shared gesture-finalization path.
+
+---
+
 ## 2026-09-04 to 2026-09-05 — Reliability, status history, Web Push, and admin broadcasts
 
 **Status:** RESOLVED IN CODE; latest Production parity must still be verified when relevant

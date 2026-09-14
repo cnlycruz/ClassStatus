@@ -27,7 +27,8 @@ interface StatusHeroProps {
   onFilterChange: (filter: string) => void;
   viewMode: "map" | "list";
   onViewModeChange: (mode: "map" | "list") => void;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
+  isRefreshing?: boolean;
   shareCardEffectiveDate?: string;
 }
 
@@ -38,6 +39,7 @@ export const StatusHero = React.memo(function StatusHero({
   viewMode,
   onViewModeChange,
   onRefresh,
+  isRefreshing = false,
   shareCardEffectiveDate,
 }: StatusHeroProps) {
   const shareCardDownload = React.useRef<ReturnType<typeof createNcrShareCardDownloadController> | null>(null);
@@ -110,9 +112,11 @@ export const StatusHero = React.memo(function StatusHero({
 
             <button
               onClick={onRefresh}
-              className="hero-touch-control flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-3 text-xs font-semibold text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:px-4 sm:text-sm"
+              disabled={isRefreshing}
+              aria-busy={isRefreshing}
+              className="hero-touch-control flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-3 text-xs font-semibold text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:cursor-wait disabled:opacity-70 sm:px-4 sm:text-sm"
             >
-              <RefreshCw className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+              <RefreshCw className={`h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4 ${isRefreshing ? "animate-spin" : ""}`} />
               <span>Refresh</span>
             </button>
 

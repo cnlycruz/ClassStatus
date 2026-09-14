@@ -10,6 +10,7 @@ import {
   ncrLabelCompensation,
   ncrLabelEffectiveScale,
   ncrMapSvgTransform,
+  ncrPanView,
   ncrPinchView,
   scalePointAroundAnchor,
   shouldCaptureNcrMapPointer,
@@ -93,11 +94,11 @@ describe("NCR map viewport interaction", () => {
     expect(shouldActivateNcrMapTarget({ hasMoved: false, hasPinched: true })).toBe(false);
   });
 
-  it("keeps pointer capture out of Windows-Chromium-like clicks while capturing real pans and pinches", () => {
+  it("keeps the drag threshold independent from pointer capture", () => {
     const start = { x: 120, y: 200 };
 
-    // Mouse/touch pointerdown and pointerup on an LGU have no movement, so the
-    // SVG path or label remains the click target and can activate normally.
+    // Pointer capture starts at pointerdown to retain continuous mobile move
+    // events, while activation still depends on the movement threshold.
     expect(shouldCaptureNcrMapPointer({ pointerCount: 1, start, current: start })).toBe(false);
     expect(shouldCaptureNcrMapPointer({ pointerCount: 1, start, current: { x: 128, y: 200 } })).toBe(false);
     expect(shouldActivateNcrMapTarget({ hasMoved: false, hasPinched: false })).toBe(true);
@@ -126,6 +127,30 @@ describe("NCR map viewport interaction", () => {
     })).toEqual({ scale: 4, pan: { x: 20, y: 30 } });
   });
 
+  it("applies every subsequent one-finger drag position", () => {
+    // The touch starts at (100, 100) with an existing pan of (12, -8), so
+    // each pointermove must produce a new viewport rather than stopping after
+    // the first frame.
+    const dragOffset = { x: 88, y: 108 };
+    const moves = [
+      { x: 109, y: 104 },
+      { x: 122, y: 112 },
+      { x: 145, y: 127 },
+      { x: 171, y: 149 },
+    ];
+
+    expect(moves.map((currentPoint) => ncrPanView({
+      scale: 1.6,
+      dragOffset,
+      currentPoint,
+    }))).toEqual([
+      { scale: 1.6, pan: { x: 21, y: -4 } },
+      { scale: 1.6, pan: { x: 34, y: 4 } },
+      { scale: 1.6, pan: { x: 57, y: 19 } },
+      { scale: 1.6, pan: { x: 83, y: 41 } },
+    ]);
+  });
+
   it("keeps continuous movement out of React state and removes transform lag", () => {
     expect(componentSource).not.toContain("labelFontScale");
     expect(componentSource).not.toContain("transition-transform");
@@ -136,6 +161,7 @@ describe("NCR map viewport interaction", () => {
     expect(componentSource).not.toContain("willChange");
     expect(componentSource).toContain("mapGroup.setAttribute(");
     expect(componentSource).toContain("ncrMapSvgTransform(view");
+    expect(componentSource).toContain("ncrPanView({");
     expect(componentSource).toContain('textRendering="geometricPrecision"');
     expect(componentSource).toContain("renderedLabelScaleRef.current === scale");
     expect(componentSource).toContain("requestAnimationFrame");
@@ -151,7 +177,7 @@ describe("NCR map viewport interaction", () => {
     expect(componentSource).toContain("shouldActivateNcrMapTarget(gesture)");
   });
 
-  it("does not immediately capture a simple LGU or label click", () => {
+  it("captures the initial touch pointer before movement while preserving tap activation", () => {
     const pointerDown = componentSource.slice(
       componentSource.indexOf("const handlePointerDown"),
       componentSource.indexOf("const handlePointerMove")
@@ -161,10 +187,38 @@ describe("NCR map viewport interaction", () => {
       componentSource.indexOf("const finishPointer")
     );
 
-    expect(pointerDown).not.toContain("setPointerCapture(event.pointerId)");
+    expect(pointerDown).toContain("setPointerCapture(event.pointerId)");
     expect(pointerMove).toContain("shouldCaptureNcrMapPointer");
-    expect(pointerMove).toContain("setPointerCapture(event.pointerId)");
+    expect(pointerMove).not.toContain("setPointerCapture(event.pointerId)");
     expect(componentSource.match(/onSelectLgu\(pathItem\.lguId\)/g)).toHaveLength(3);
     expect(componentSource).toContain("onClearSelection()");
+  });
+
+  it("retains a continuous touch drag and resets it through pointer cancellation", () => {
+    const pointerDown = componentSource.slice(
+      componentSource.indexOf("const handlePointerDown"),
+      componentSource.indexOf("const handlePointerMove")
+    );
+    const pointerMove = componentSource.slice(
+      componentSource.indexOf("const handlePointerMove"),
+      componentSource.indexOf("const finishPointer")
+    );
+    const finishPointer = componentSource.slice(
+      componentSource.indexOf("const finishPointer"),
+      componentSource.indexOf("const handleCanvasClick")
+    );
+
+    // A touch pointer is captured before any of four continuous moves. The
+    // RAF gate clears itself, so each later frame can apply its newest view.
+    expect(pointerDown).toContain("gesture.pointers.set(event.pointerId, point)");
+    expect(pointerDown).toContain("event.currentTarget.setPointerCapture(event.pointerId)");
+    expect(pointerMove).toContain("gesture.pointers.set(event.pointerId, point)");
+    expect(componentSource).toContain("viewFrameRef.current = null;");
+    expect(componentSource).toContain("onPointerUp={finishPointer}");
+    expect(componentSource).toContain("onPointerCancel={(event) => finishPointer(event, true)}");
+    expect(finishPointer).toContain("gesture.pointers.delete(event.pointerId)");
+    expect(finishPointer).toContain("gesture.capturedPointers.delete(event.pointerId)");
+    expect(finishPointer).toContain('gesture.mode = "idle"');
+    expect(componentSource).toContain("touch-none");
   });
 });

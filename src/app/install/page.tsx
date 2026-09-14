@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import { InstallGuide } from "@/components/InstallGuide";
-import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 
 export const metadata: Metadata = {
@@ -12,7 +11,6 @@ export const metadata: Metadata = {
 export default function InstallPage() {
   return (
     <div className="flex min-h-screen flex-col">
-      <Navbar />
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
         <header className="mx-auto mb-10 max-w-2xl text-center">
           <Image

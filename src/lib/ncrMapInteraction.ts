@@ -73,6 +73,20 @@ export function shouldActivateNcrMapTarget(gesture: { hasMoved: boolean; hasPinc
   return !gesture.hasMoved && !gesture.hasPinched;
 }
 
+export function ncrPanView(input: {
+  scale: number;
+  dragOffset: MapPoint;
+  currentPoint: MapPoint;
+}): NcrMapView {
+  return {
+    scale: input.scale,
+    pan: {
+      x: input.currentPoint.x - input.dragOffset.x,
+      y: input.currentPoint.y - input.dragOffset.y,
+    },
+  };
+}
+
 export function ncrPinchView(input: {
   startView: NcrMapView;
   startMidpoint: MapPoint;

@@ -27,6 +27,38 @@ describe("public share-card action", () => {
     expect(html).not.toContain("Generating…");
   });
 
+  it("spins only the refresh icon while a manual dashboard refresh is active", () => {
+    const idle = renderToStaticMarkup(
+      <StatusHero
+        summary={null}
+        activeFilter="all"
+        onFilterChange={vi.fn()}
+        viewMode="map"
+        onViewModeChange={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+    const refreshing = renderToStaticMarkup(
+      <StatusHero
+        summary={null}
+        activeFilter="all"
+        onFilterChange={vi.fn()}
+        viewMode="map"
+        onViewModeChange={vi.fn()}
+        onRefresh={vi.fn()}
+        isRefreshing
+      />,
+    );
+
+    expect(idle).toContain("Refresh");
+    expect(idle).not.toContain("animate-spin");
+    expect(idle).toContain('aria-busy="false"');
+    expect(refreshing).toContain("animate-spin");
+    expect(refreshing).toContain('aria-busy="true"');
+    expect(refreshing).toContain("disabled=\"\"");
+    expect(refreshing).toContain("h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4 animate-spin");
+  });
+
   it("renders identical initial markup for mobile and desktop browser globals", () => {
     const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
 

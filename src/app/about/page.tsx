@@ -1,5 +1,4 @@
 import React from "react";
-import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import {
   HelpCircle,
@@ -16,8 +15,6 @@ import {
 export default function AboutPage() {
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar />
-
       <main className="flex-1 mx-auto w-full max-w-4xl px-4 sm:px-6 lg:px-8 py-10 sm:py-16 space-y-12">
         {/* Header */}
         <div className="space-y-4 text-center max-w-2xl mx-auto">

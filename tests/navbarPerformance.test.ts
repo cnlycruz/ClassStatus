@@ -32,7 +32,7 @@ describe("navbar performance contracts", () => {
     expect(navbarSource).not.toContain('src="/NEWLOGODARK.png"');
   });
 
-  it("does not prefetch secondary routes during homepage load", () => {
-    expect(navbarSource).toContain("prefetch={false}");
+  it("allows normal Next.js prefetching for public navigation", () => {
+    expect(navbarSource).not.toContain("prefetch={false}");
   });
 });

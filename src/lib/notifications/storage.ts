@@ -267,10 +267,28 @@ export async function listManualBroadcastHistory(limit = 10): Promise<ManualBroa
   const deploymentNamespace = namespace();
   if (getStorageDriver() === "local-json") {
     const state = readLocal();
-    return state.events.filter((event) => event.deploymentNamespace === deploymentNamespace && event.kind === "manual").sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)).slice(0, Math.max(1, Math.min(limit, 20))).map((event) => {
+    return state.events.filter((event) => event.deploymentNamespace === deploymentNamespace && event.kind === "manual" && !event.historyDeletedAt).sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)).slice(0, Math.max(1, Math.min(limit, 20))).map((event) => {
       const deliveries = state.deliveries.filter((delivery) => delivery.eventId === event.id);
       return { id: event.id, title: event.title || "Class Status Announcement", message: event.message || "", recipientMode: event.recipientMode || "all", targetLguIds: event.targetLguIds || [], recipientCount: event.recipientCount || deliveries.length, createdAt: event.createdAt, deliveredCount: deliveries.filter((delivery) => delivery.state === "delivered").length, pendingCount: deliveries.filter((delivery) => delivery.state === "pending" || delivery.state === "failed").length, failedCount: deliveries.filter((delivery) => delivery.state === "failed").length };
     });
   }
   return manualNotificationStoreRpc<ManualBroadcastHistoryEntry[]>("list-manual-history", { limit: Math.max(1, Math.min(limit, 20)) });
+}
+
+export async function deleteManualBroadcastHistory(id: string): Promise<void> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw new Error("manual-notification-history-invalid");
+  const deploymentNamespace = namespace();
+  const now = new Date().toISOString();
+  if (getStorageDriver() === "local-json") {
+    const deleted = await mutateLocal((state) => {
+      const event = state.events.find((item) => item.id === id && item.deploymentNamespace === deploymentNamespace && item.kind === "manual" && !item.historyDeletedAt);
+      if (!event) return false;
+      event.historyDeletedAt = now;
+      return true;
+    });
+    if (!deleted) throw new Error("manual-notification-history-not-found");
+    return;
+  }
+  const result = await manualNotificationStoreRpc<{ deleted: boolean }>("delete-manual-history", { id, now });
+  if (!result.deleted) throw new Error("manual-notification-history-not-found");
 }

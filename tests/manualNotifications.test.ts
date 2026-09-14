@@ -9,7 +9,7 @@ import { POST as sendManualNotification } from "@/app/api/admin/notifications/ro
 import { POST as previewManualNotification } from "@/app/api/admin/notifications/preview/route";
 import { sendAdminNotification } from "@/lib/admin/notifications";
 import { dispatchPendingPushNotifications, notificationPayload } from "@/lib/notifications/dispatch";
-import { createManualBroadcast, createNotificationEvent, deactivatePushSubscription, listManualBroadcastHistory, listPendingPushDeliveries, previewManualBroadcast, savePushSubscription } from "@/lib/notifications/storage";
+import { createManualBroadcast, createNotificationEvent, deactivatePushSubscription, deleteManualBroadcastHistory, listManualBroadcastHistory, listPendingPushDeliveries, previewManualBroadcast, savePushSubscription } from "@/lib/notifications/storage";
 import type { LGUId, SuspensionRecord } from "@/types";
 
 let directory = "";
@@ -117,6 +117,18 @@ describe("protected manual custom notifications", () => {
     await createManualBroadcast(input()); await createNotificationEvent(automaticRecord());
     const history = await listManualBroadcastHistory();
     expect(history).toHaveLength(1); expect(document().events.map((event) => event.kind)).toEqual(expect.arrayContaining(["manual", "initial"]));
+  });
+
+  it("removes only the selected manual history entry while preserving events, deliveries, and subscriptions", async () => {
+    await savePushSubscription({ endpoint: endpoint("caloocan"), ...pushKeys, lguIds: ["caloocan"] });
+    const first = await createManualBroadcast(input());
+    const second = await createManualBroadcast(input({ requestKey: "22222222-2222-4222-8222-222222222222" }));
+    await deleteManualBroadcastHistory(first.event.id);
+
+    expect((await listManualBroadcastHistory()).map((entry) => entry.id)).toEqual([second.event.id]);
+    expect(document().events).toHaveLength(2);
+    expect(document().deliveries).toHaveLength(2);
+    expect(JSON.parse(fs.readFileSync(path.join(directory, "push_notifications.json"), "utf8")).subscriptions).toHaveLength(1);
   });
 
   it("projects manual fields from the private Supabase pending-delivery RPC", () => {

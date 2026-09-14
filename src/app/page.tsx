@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { StatusHero } from "@/components/StatusHero";
 import { NcrInteractiveMap } from "@/components/NcrInteractiveMap";
@@ -30,6 +29,7 @@ export default function HomePage() {
   const activeDashboardRequest = useRef<Promise<void> | null>(null);
   const dashboardAbortController = useRef<AbortController | null>(null);
   const dashboardRenderFingerprint = useRef<string | null>(null);
+  const manualDashboardRefreshInFlight = useRef(false);
   const [lgus, setLgus] = useState<
     (LGUInfo & {
       status: SuspensionStatus;
@@ -46,6 +46,7 @@ export default function HomePage() {
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"map" | "list">("map");
   const [isSchoolSearchOpen, setIsSchoolSearchOpen] = useState(false);
+  const [isDashboardRefreshing, setIsDashboardRefreshing] = useState(false);
 
   const loadData = useCallback((): Promise<void> => {
     if (activeDashboardRequest.current) return activeDashboardRequest.current;
@@ -106,9 +107,23 @@ export default function HomePage() {
     return request;
   }, []);
 
+  const handleDashboardRefresh = useCallback(async () => {
+    if (manualDashboardRefreshInFlight.current) return;
+
+    manualDashboardRefreshInFlight.current = true;
+    setIsDashboardRefreshing(true);
+    try {
+      await loadData();
+    } finally {
+      manualDashboardRefreshInFlight.current = false;
+      setIsDashboardRefreshing(false);
+    }
+  }, [loadData]);
+
   useEffect(() => {
     void loadData();
 
+    const openSchoolSearch = () => setIsSchoolSearchOpen(true);
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "/" && (e.target as HTMLElement).tagName !== "INPUT") {
         e.preventDefault();
@@ -121,8 +136,10 @@ export default function HomePage() {
     };
 
     window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("classstatus:open-school-search", openSchoolSearch);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("classstatus:open-school-search", openSchoolSearch);
       dashboardAbortController.current?.abort();
     };
   }, [loadData]);
@@ -136,14 +153,13 @@ export default function HomePage() {
     if (initialSelectionApplied.current) return;
     initialSelectionApplied.current = true;
     const lguId = getInitialDashboardSelection(new URLSearchParams(window.location.search).get("lgu"));
+    reportLguView(lguId);
     if (lguId) {
       setSelectedLguId(lguId);
-      reportLguView(lguId);
     }
   }, []);
 
   const selectedLgu = lgus.find((l) => l.id === selectedLguId) || null;
-  const openSchoolSearch = useCallback(() => setIsSchoolSearchOpen(true), []);
   const closeSchoolSearch = useCallback(() => setIsSchoolSearchOpen(false), []);
   const selectLgu = useCallback((id: LGUId) => {
     setSelectedLguId(id);
@@ -166,8 +182,6 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar onOpenSchoolSearch={openSchoolSearch} selectedLguId={selectedLguId} />
-
       <main className="dashboard-main flex-1 mx-auto w-full max-w-7xl 2xl:max-w-[min(90vw,1920px)] px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-5 space-y-5 sm:space-y-6">
         <StatusHero
           summary={summary}
@@ -175,7 +189,8 @@ export default function HomePage() {
           onFilterChange={setActiveFilter}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          onRefresh={loadData}
+          onRefresh={handleDashboardRefresh}
+          isRefreshing={isDashboardRefreshing}
         />
 
         {viewMode === "map" ? (

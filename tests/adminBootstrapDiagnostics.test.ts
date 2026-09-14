@@ -15,10 +15,9 @@ vi.mock("@/lib/admin/requestSecurity", () => ({
   adminErrorResponse: () => Response.json({ success: false, error: "INTERNAL_ERROR" }, { status: 500 }),
 }));
 vi.mock("@/lib/admin/suspensions", () => ({ reconcileExpiredRemovals: mocks.reconcileExpiredRemovals }));
-vi.mock("@/lib/storage", () => ({ suspensionStore: { readState: mocks.readState } }));
+vi.mock("@/lib/storage", () => ({ suspensionStore: { readState: mocks.readState, listAudit: mocks.listAudit } }));
 vi.mock("@/collector/storage", () => ({ getCollectorLogs: mocks.getCollectorLogs, getCollectorFreshness: mocks.getCollectorFreshness }));
 vi.mock("@/lib/notifications/storage", () => ({ listManualBroadcastHistory: mocks.listManualBroadcastHistory }));
-vi.mock("@/lib/admin/audit", () => ({ listAudit: mocks.listAudit }));
 
 import { GET } from "@/app/api/admin/bootstrap/route";
 
@@ -28,7 +27,7 @@ describe("admin bootstrap diagnostics", () => {
     mocks.reconcileExpiredRemovals.mockResolvedValue(0);
     mocks.readState.mockResolvedValue({ records: [], audit: [] });
     mocks.getCollectorLogs.mockResolvedValue([]);
-    mocks.listAudit.mockResolvedValue([]);
+    mocks.listAudit.mockResolvedValue({ entries: [], total: 0 });
   });
 
   it("keeps the authenticated console available when optional diagnostics are unavailable", async () => {
@@ -41,6 +40,7 @@ describe("admin bootstrap diagnostics", () => {
     expect(response.status).toBe(200);
     expect(payload.health.lastCompleteSweepAt).toBeNull();
     expect(payload.manualNotifications).toEqual([]);
+    expect(mocks.listAudit).toHaveBeenCalledWith(5, 0);
     expect(payload.registries.lgus).toHaveLength(17);
   });
 });

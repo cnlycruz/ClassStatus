@@ -12,6 +12,7 @@ import {
   initialNcrMapView,
   ncrLabelAnchorTransform,
   NCR_MAP_BASE_VIEWBOX,
+  ncrPanView,
   ncrMapSvgTransform,
   ncrPinchView,
   shouldCaptureNcrMapPointer,
@@ -255,6 +256,13 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
     const gesture = gestureRef.current;
     gesture.pointers.set(event.pointerId, point);
 
+    // Capture from the first contact. On mobile, waiting until the drag
+    // threshold has been crossed gives the browser an opportunity to cancel
+    // the pointer stream before the map owns the gesture. Capture does not
+    // turn a tap into a drag: that remains governed by hasMoved below.
+    event.currentTarget.setPointerCapture(event.pointerId);
+    gesture.capturedPointers.add(event.pointerId);
+
     if (gesture.pointers.size === 1) {
       gesture.mode = "pan";
       gesture.startPoint = point;
@@ -265,10 +273,6 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
       gesture.hasMoved = false;
       gesture.hasPinched = false;
     } else if (gesture.pointers.size === 2) {
-      gesture.pointers.forEach((_point, pointerId) => {
-        event.currentTarget.setPointerCapture(pointerId);
-        gesture.capturedPointers.add(pointerId);
-      });
       beginPinch();
     }
   }, [beginPinch]);
@@ -291,17 +295,11 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
       }
 
       gesture.hasMoved = true;
-      if (!gesture.capturedPointers.has(event.pointerId)) {
-        event.currentTarget.setPointerCapture(event.pointerId);
-        gesture.capturedPointers.add(event.pointerId);
-      }
-      scheduleView({
+      scheduleView(ncrPanView({
         scale: viewRef.current.scale,
-        pan: {
-          x: point.x - gesture.dragOffset.x,
-          y: point.y - gesture.dragOffset.y,
-        },
-      });
+        dragOffset: gesture.dragOffset,
+        currentPoint: point,
+      }));
       return;
     }
 

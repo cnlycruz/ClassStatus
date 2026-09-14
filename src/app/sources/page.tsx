@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { OPERATIONAL_COLLECTOR_SOURCES } from "@/data/sources";
 import {
@@ -24,8 +23,6 @@ export default function SourcesPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar />
-
       <main className="flex-1 mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
         {/* Page Header */}
         <div className="space-y-3 max-w-3xl">

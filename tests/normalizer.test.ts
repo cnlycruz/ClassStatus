@@ -42,6 +42,39 @@ describe("Tier 3 statement normalizer", () => {
     expect(result.publishable).toBe(true);
   });
 
+  it("resolves today in Manila across the UTC date boundary", () => {
+    const result = normalizeAnnouncementSegments(
+      "QC - Classes are suspended today in all levels, public and private, due to heavy rain.",
+      {
+        articleTitle: "Walang Pasok update",
+        publishedAt: "2026-09-08T16:30:00.000Z",
+        now: new Date("2026-09-08T17:00:00.000Z"),
+      }
+    )[0];
+
+    expect(result).toMatchObject({
+      matchedLguIds: ["quezon-city"],
+      effectiveDate: "2026-09-09",
+      publishable: true,
+    });
+  });
+
+  it.each([
+    ["City of Manila", "manila"],
+    ["Caloocan City", "caloocan"],
+    ["Paranaque", "paranaque"],
+    ["Parañaque", "paranaque"],
+    ["Las Pinas", "las-pinas"],
+    ["Las Piñas", "las-pinas"],
+    ["Municipality of Pateros", "pateros"],
+  ])("resolves the supported NCR alias %s", (alias, expectedLguId) => {
+    const result = normalizeAnnouncementSegments(
+      `${alias} - Classes are suspended in all levels, public and private, on August 23, 2026.`,
+      context
+    )[0];
+    expect(result).toMatchObject({ matchedLguIds: [expectedLguId], publishable: true });
+  });
+
   it("rejects stale, undated, and multi-date statements", () => {
     const stale = normalizeAnnouncementSegments(
       "Manila - Classes are suspended in all levels, public and private, on August 21, 2026.",

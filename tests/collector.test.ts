@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CollectorEngine } from "../src/collector/engine";
 import {
@@ -38,6 +40,10 @@ const rawItem = (): RawAnnouncementItem => ({
   publishedAt: "2026-08-22T21:00:00+08:00",
   evidenceFingerprint: "a".repeat(64),
 });
+
+function fixture(name: string): string {
+  return fs.readFileSync(path.join(__dirname, "fixtures", name), "utf8");
+}
 
 class FakeAdapter implements SourceCollectorAdapter {
   calls = 0;
@@ -128,6 +134,72 @@ describe("Tier 3 collector policy and persistence", () => {
     const summary = await engine.runSweep();
     expect(summary).toMatchObject({ announcementsPublished: 0, announcementsValidated: 0, announcementsRejected: 3 });
     expect(await getSuspensions()).toEqual([]);
+  });
+
+  it("publishes valid NCR entries when an unrelated non-NCR entry has a restricted scope", async () => {
+    const item = {
+      ...rawItem(),
+      title: "WALANG PASOK: Class suspensions for Wednesday, September 9, 2026",
+      rawText: fixture("gma-mixed-region-restriction-2026-09-09.txt"),
+      canonicalUrl: "https://www.gmanetwork.com/news/serbisyopubliko/walangpasok/1001650/story/",
+      sourceUrl: "https://www.gmanetwork.com/news/serbisyopubliko/walangpasok/1001650/story/",
+      publishedAt: "2026-09-08T13:05:00.000Z",
+      evidenceFingerprint: "9".repeat(64),
+    };
+    const engine = new CollectorEngine({
+      sources: [tier3Source()],
+      mediaAdapter: new FakeAdapter([item]),
+      now: () => new Date("2026-09-09T02:30:00.000Z"),
+    });
+
+    const summary = await engine.runSweep();
+    const records = await getSuspensions();
+
+    expect(summary).toMatchObject({
+      announcementsDiscovered: 1,
+      announcementsValidated: 2,
+      announcementsPublished: 2,
+      announcementsRejected: 0,
+    });
+    expect(records.map((record) => record.lguId).sort()).toEqual(["caloocan", "quezon-city"]);
+    expect(records.every((record) => record.effectiveDate === "2026-09-09")).toBe(true);
+    expect(summary.logs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        message: "Suspension candidate classified.",
+        details: expect.objectContaining({ stage: "classification", decision: "accepted", publishableStatements: 2 }),
+      }),
+      expect.objectContaining({
+        level: "success",
+        details: expect.objectContaining({ stage: "publication", decision: "published", databaseAction: "created" }),
+      }),
+    ]));
+  });
+
+  it.each([
+    [
+      "an irrelevant policy article with suspension-like words",
+      "DepEd officials said the proposed policy could change class suspension rules for public and private schools on August 23, 2026.",
+      "uncertain-or-advisory-language",
+    ],
+    [
+      "an explicit suspension outside NCR",
+      "Bacoor City - Classes are suspended in all levels, public and private, on August 23, 2026.",
+      "missing-ncr-lgu",
+    ],
+  ])("rejects %s before persistence", async (_label, rawText, rejectionReason) => {
+    const engine = new CollectorEngine({
+      sources: [tier3Source()],
+      mediaAdapter: new FakeAdapter([{ ...rawItem(), rawText }]),
+      now: () => new Date("2026-08-23T08:00:00+08:00"),
+    });
+
+    const summary = await engine.runSweep();
+
+    expect(summary).toMatchObject({ announcementsPublished: 0, announcementsValidated: 0, announcementsRejected: 1 });
+    expect(await getSuspensions()).toEqual([]);
+    expect(summary.logs).toContainEqual(expect.objectContaining({
+      details: expect.objectContaining({ stage: "normalization", decision: "rejected", rejectionReason }),
+    }));
   });
 
   it("hard-disables Tier 1 even when a caller tries to enable it", async () => {

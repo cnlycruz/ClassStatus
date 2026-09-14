@@ -13,6 +13,34 @@ exist. See `KNOWN_ISSUES.md` for things that still need action or Production ver
 - **VERIFY IN PRODUCTION** — code is fixed, but Git alone cannot prove the live environment matches it.
 - **INTENTIONAL DECISION** — behavior was deliberately chosen; do not undo it as “cleanup” without a reason.
 
+## 2026-09-14 — Valid GMA NCR entries were rejected by an unrelated article-wide restriction
+
+**Status:** RESOLVED IN CODE; verify after Production deployment
+
+### Symptom
+
+The one-minute collector fetched a real GMA class-suspension tracker but published none of its valid Metro Manila
+entries. Manual publication was required.
+
+### Root cause and fix
+
+The Tier 3 normalizer applied `UNSUPPORTED_RESTRICTION` to the entire article before splitting it into logical
+statements. GMA's standard introduction said classes were suspended in “some areas,” and the September 9 article
+also contained a Pampanga-only `maliban sa` exception. Either unrelated phrase rejected the whole article as
+`unsupported-restricted-scope`, including explicit unrestricted NCR entries.
+
+Restriction checks are now statement-scoped. A shared article lead may establish the suspension action without
+transferring its generic “some areas” wording to an explicit LGU entry. Same-statement restrictions and adjacent
+trailing exception lines remain fail-closed. Combined non-NCR headings such as `REGION III - CENTRAL LUZON` also
+end NCR context. Partial candidate-article parsing is reported as degraded and cannot refresh the last-complete-
+sweep timestamp.
+
+### Lesson
+
+Fail-closed checks must follow the same semantic boundary as the fact they qualify. Do not apply one location's
+restriction to independent entries in a multi-region tracker, and do not call partial candidate processing a fully
+successful source check.
+
 ---
 
 ## 2026-08-30 — Live Operations complexity was removed

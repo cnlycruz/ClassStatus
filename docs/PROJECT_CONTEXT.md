@@ -236,6 +236,8 @@ Freshness handling:
 - durable `lastSuccessfulCheckAt`
 - only a fully successful Tier 3 check updates that timestamp
 - failed or partial attempts must not falsely refresh it
+- multi-entry tracker restrictions are evaluated per logical statement, while same-statement and trailing
+  exceptions continue to fail closed
 
 Per-source health includes concepts such as:
 

@@ -116,19 +116,28 @@ export class CollectorEngine {
 
         const rawItems = discovery.items;
         announcementsDiscovered += rawItems.length;
-        source.lastStatus = "success";
-        source.lastErrorMessage = undefined;
         source.totalCollected += rawItems.length;
-        source.consecutiveFailures = 0;
-        sourcesSucceeded++;
+        if (discovery.health === "degraded") {
+          source.lastStatus = "error";
+          source.lastErrorMessage = discovery.message || "One or more candidate articles could not be processed";
+          source.consecutiveFailures += 1;
+          sourcesFailed++;
+        } else {
+          source.lastStatus = "success";
+          source.lastErrorMessage = undefined;
+          source.consecutiveFailures = 0;
+          sourcesSucceeded++;
+        }
         addLog(
-          discovery.health === "reachable_no_candidates" ? "info" : "success",
+          discovery.health === "degraded" ? "error" : discovery.health === "reachable_no_candidates" ? "info" : "success",
           source.id,
           source.name,
-          discovery.health === "reachable_no_candidates"
+          discovery.health === "degraded"
+            ? `Discovery degraded: ${discovery.message || "one or more candidate articles could not be processed"}.`
+            : discovery.health === "reachable_no_candidates"
             ? discovery.message || "Discovery reachable with no recent candidates."
             : `Discovery healthy: ${discovery.candidateCount} candidate(s), ${rawItems.length} article(s) fetched.`,
-          { health: discovery.health, candidateCount: discovery.candidateCount }
+          { stage: "retrieval", decision: discovery.health === "degraded" ? "partial-failure" : "accepted", health: discovery.health, candidateCount: discovery.candidateCount, articlesFetched: rawItems.length }
         );
 
         for (const item of rawItems) {
@@ -137,18 +146,36 @@ export class CollectorEngine {
             publishedAt: item.publishedAt,
             now: runStarted,
           });
+          const publishableStatements = parsedStatements.filter((parsed) => parsed.publishable).length;
+          addLog("info", source.id, source.name, "Suspension candidate classified.", {
+            stage: "classification",
+            decision: publishableStatements > 0 ? "accepted" : "rejected",
+            articleUrl: item.canonicalUrl,
+            articleTitle: item.title,
+            statements: parsedStatements.length,
+            publishableStatements,
+          });
 
           for (const parsed of parsedStatements) {
             if (!parsed.publishable) {
               if (parsed.scopeKind === "school") {
                 announcementsHeld++;
                 addLog("info", source.id, source.name, "Held school-specific announcement outside the live LGU pipeline.", {
+                  stage: "normalization",
+                  decision: "held",
+                  rejectionReason: parsed.rejectionReason,
                   schoolId: parsed.schoolId,
                   evidenceExcerpt: parsed.evidenceExcerpt,
+                  articleUrl: item.canonicalUrl,
                 });
               } else {
                 announcementsRejected++;
                 addLog("warn", source.id, source.name, `Rejected statement: ${parsed.rejectionReason}.`, {
+                  stage: "normalization",
+                  decision: "rejected",
+                  rejectionReason: parsed.rejectionReason,
+                  matchedLguIds: parsed.matchedLguIds,
+                  effectiveDate: parsed.effectiveDate || null,
                   evidenceExcerpt: parsed.evidenceExcerpt,
                   articleUrl: item.canonicalUrl,
                 });
@@ -213,25 +240,54 @@ export class CollectorEngine {
                 isUpcoming: lifecycle.isUpcoming,
                 isExpired: lifecycle.isExpired,
               };
-              const result = await upsertCollectedSuspensionRecord(finalRecord);
+              let result: Awaited<ReturnType<typeof upsertCollectedSuspensionRecord>>;
+              try {
+                result = await upsertCollectedSuspensionRecord(finalRecord);
+              } catch (error) {
+                addLog("error", source.id, source.name, `Database publication failed for ${lguId.toUpperCase()}.`, {
+                  stage: "database",
+                  decision: "failed",
+                  recordId: finalRecord.id,
+                  lguId,
+                  effectiveDate: finalRecord.effectiveDate,
+                  articleUrl: item.canonicalUrl,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+                throw error;
+              }
               if (result.action === "held") {
                 announcementsHeld++;
                 addLog("warn", source.id, source.name, `Held conflicting statement for ${lguId.toUpperCase()}.`, {
+                  stage: "matching",
+                  decision: "held",
                   reason: result.reason,
+                  recordId: finalRecord.id,
+                  lguId,
+                  effectiveDate: finalRecord.effectiveDate,
                   articleUrl: item.canonicalUrl,
                 });
                 continue;
               }
               if (result.action === "unchanged") {
                 addLog("info", source.id, source.name, `Unchanged Tier 3 record for ${lguId.toUpperCase()} (${finalRecord.effectiveDate}); no write performed.`, {
+                  stage: "deduplication",
+                  decision: "unchanged",
+                  duplicateResult: "existing-equivalent",
                   recordId: result.record.id,
+                  lguId,
+                  effectiveDate: finalRecord.effectiveDate,
                   articleUrl: item.canonicalUrl,
                 });
                 continue;
               }
               announcementsPublished++;
               addLog("success", source.id, source.name, `${result.action} Tier 3 record for ${lguId.toUpperCase()} (${finalRecord.effectiveDate}).`, {
+                stage: "publication",
+                decision: "published",
+                databaseAction: result.action,
                 recordId: result.record.id,
+                lguId,
+                effectiveDate: finalRecord.effectiveDate,
                 confidence: result.record.confidence,
                 articleUrl: item.canonicalUrl,
               });

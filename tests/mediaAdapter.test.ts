@@ -127,6 +127,36 @@ describe("media discovery profiles", () => {
     expect(result.items[0].rawText).toContain("Quezon City");
   });
 
+  it("reports degraded health when only some discovered candidate articles produce usable evidence", async () => {
+    const secondItem = `
+      <item>
+        <title>WALANG PASOK: Class suspensions for Sunday, August 23, 2026</title>
+        <link>https://www.gmanetwork.com/news/serbisyopubliko/walangpasok/888888/walang-pasok-august-23-2026/story/</link>
+        <pubDate>Sat, 22 Aug 2026 21:01:00 +0800</pubDate>
+      </item>`;
+    const feed = read("gma-feed.xml").replace("</channel>", `${secondItem}</channel>`);
+    const mockFetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url === gmaDiscoveryUrl) return xmlResponse(feed);
+      if (url.includes("/999999/")) {
+        return new Response(read("gma-article.html"), { status: 200, headers: { "content-type": "text/html" } });
+      }
+      return new Response("<html><main>article body without required publication metadata</main></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    }) as typeof fetch;
+
+    const result = await gmaResult(mockFetch);
+
+    expect(result).toMatchObject({
+      health: "degraded",
+      candidateCount: 2,
+      message: "1 candidate article(s) could not be parsed",
+    });
+    expect(result.items).toHaveLength(1);
+  });
+
   it("marks persistent Inquirer 403 access as blocked without fallback", async () => {
     const blockedFetch = (async () =>
       new Response("<html><title>Just a moment...</title></html>", {

@@ -4,7 +4,7 @@ import { DELAYED_AFTER_MS } from "@/lib/freshness";
 export type SourceHealthView = { id: string; name: string; state: "healthy" | "delayed" | "error" | "unknown"; lastAttemptAt?: string; lastSuccessAt?: string; failureSummary?: string };
 export type CollectorHealthView = { overall: "healthy" | "partial-failure" | "delayed" | "unknown"; sources: SourceHealthView[]; latestAttemptAt?: string; lastCompleteSweepAt: string | null; latestRun?: { published: number; held: number; rejected: number; sourcesSucceeded?: number; sourcesAttempted?: number } };
 
-const attempt = (log: CollectorLog) => log.level === "error" || /Discovery (healthy|reachable)|Discovery (blocked|failed)|Live source failed/.test(log.message);
+const attempt = (log: CollectorLog) => log.level === "error" || /Discovery (healthy|reachable|degraded)|Discovery (blocked|failed)|Live source failed/.test(log.message);
 const successful = (log: CollectorLog) => log.level !== "error" && /Discovery (healthy|reachable)/.test(log.message);
 
 function safeFailure(message: string): string {

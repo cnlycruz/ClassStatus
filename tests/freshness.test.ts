@@ -112,6 +112,31 @@ describe("public collector freshness", () => {
     await expect(getCollectorFreshness()).resolves.toEqual({ lastSuccessfulCheckAt: lastSuccess });
   });
 
+  it("processes usable articles but does not call a partially parsed source a complete successful check", async () => {
+    const lastSuccess = "2026-09-05T00:03:00.000Z";
+    await recordSuccessfulCollectorCheck(lastSuccess);
+    const degraded = new CollectorEngine({
+      sources: [source],
+      mediaAdapter: new FixedAdapter({
+        health: "degraded",
+        items: [article],
+        candidateCount: 2,
+        message: "1 candidate article(s) could not be parsed",
+      }),
+      now: () => new Date("2026-09-05T00:09:00.000Z"),
+    });
+
+    const summary = await degraded.runSweep();
+
+    expect(summary).toMatchObject({
+      sourcesSucceeded: 0,
+      sourcesFailed: 1,
+      announcementsPublished: 1,
+      sourceHealth: [{ health: "degraded", candidateCount: 2 }],
+    });
+    await expect(getCollectorFreshness()).resolves.toEqual({ lastSuccessfulCheckAt: lastSuccess });
+  });
+
   it("shows a legitimate freshness timestamp even when a successful sweep finds no verified suspension", async () => {
     const completedAt = "2026-09-05T00:10:00.000Z";
     const engine = new CollectorEngine({

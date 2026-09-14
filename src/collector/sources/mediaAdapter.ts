@@ -612,7 +612,7 @@ export class MediaCollectorAdapter implements SourceCollectorAdapter {
 
     const failedArticles = results.length - items.length;
     return {
-      health: "healthy",
+      health: failedArticles > 0 ? "degraded" : "healthy",
       items,
       candidateCount: discovery.candidates.length,
       message: failedArticles > 0 ? `${failedArticles} candidate article(s) could not be parsed` : undefined,

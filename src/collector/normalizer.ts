@@ -55,7 +55,7 @@ const LGU_ALIASES: Record<LGUId, string[]> = {
   pasay: ["pasay", "pasay city"],
   pasig: ["pasig", "pasig city"],
   pateros: ["pateros", "municipality of pateros", "bayan ng pateros"],
-  "quezon-city": ["quezon city", "lungsod quezon", "kyusi"],
+  "quezon-city": ["quezon city", "q.c.", "qc", "lungsod quezon", "kyusi"],
   "san-juan": ["san juan city", "city of san juan", "san juan"],
   taguig: ["taguig", "taguig city"],
   valenzuela: ["valenzuela", "valenzuela city"],
@@ -73,8 +73,9 @@ const MAX_ARTICLE_LINES = 256;
 const MAX_STATEMENT_CHARACTERS = 4_000;
 const MAX_PUBLICATION_TARGETS = 256;
 // The current LGU model cannot represent exceptions or barangay-level scopes.
-// Hold the article rather than discarding an exception on a separate line.
+// Hold the affected statement rather than discarding a restriction or trailing exception.
 const UNSUPPORTED_RESTRICTION = /\b(?:except(?:ion)?|excluding|other\s+than|save\s+for|but\s+not|unless|maliban|liban\s+sa|bukod\s+sa|barangays?|districts?|(?:selected|specific|some|certain|affected|flood-prone)\s+(?:areas|schools|campuses)|only\s+in|limited\s+to)\b/i;
+const TRAILING_RESTRICTION_LINE = /^(?:except(?:ion)?|with\s+the\s+exception\s+of|excluding|other\s+than|save\s+for|but\s+not|unless|maliban|liban\s+sa|bukod\s+sa|only\s+in|limited\s+to)\b/i;
 
 function escapeRegex(value: string): string {
   return value.replace(/[\/\\^$*+?.()|[\]{}]/g, "\\$&");
@@ -233,6 +234,7 @@ interface ScopeOverride {
 interface LogicalAnnouncementSegment {
   text: string;
   evidenceExcerpt: string;
+  hasNarrowerRestriction: boolean;
   scopeOverride?: ScopeOverride;
   schoolOverride?: NonNullable<ReturnType<typeof matchSchool>>;
 }
@@ -245,13 +247,22 @@ interface PendingTarget {
 }
 
 function articleLines(rawText: string): string[] {
-  return rawText
+  const lines = rawText
     .split(/\n+/)
     .map((line) => line.replace(/^[\s•*–—-]+/, "").trim())
     .filter(Boolean)
     .flatMap((line) =>
     line.length > 500 ? line.split(/(?<=[.!?])\s+(?=[A-Z#])/).map((item) => item.trim()).filter(Boolean) : [line]
   );
+  const merged: string[] = [];
+  for (const line of lines) {
+    if (TRAILING_RESTRICTION_LINE.test(line) && merged.length > 0) {
+      merged[merged.length - 1] += `\n${line}`;
+    } else {
+      merged.push(line);
+    }
+  }
+  return merged;
 }
 
 function sectionContext(line: string): SectionContext | undefined {
@@ -262,7 +273,10 @@ function sectionContext(line: string): SectionContext | undefined {
   if (/^(?:schools?(?:\s+and\s+universities)?|universities(?:\s+and\s+schools)?)$/i.test(normalized)) {
     return { kind: "schools", line };
   }
-  if (/^(?:calabarzon|cordillera\s+administrative\s+region|mimaropa|bangsamoro|barmm|central\s+luzon|cagayan\s+valley|bicol\s+region|ilocos\s+region|western\s+visayas|central\s+visayas|eastern\s+visayas|zamboanga\s+peninsula|northern\s+mindanao|davao\s+region|soccsksargen|caraga|luzon|visayas|mindanao|region\s+(?:[ivx]+|\d+))$/i.test(normalized)) {
+  if (
+    /^region\s+(?:[ivx]+|\d+)(?:\s*[-–—:]\s*[a-z\s]+)?$/i.test(normalized)
+    || /^(?:calabarzon|cordillera\s+administrative\s+region|mimaropa|bangsamoro|barmm|central\s+luzon|cagayan\s+valley|bicol\s+region|ilocos\s+region|western\s+visayas|central\s+visayas|eastern\s+visayas|zamboanga\s+peninsula|northern\s+mindanao|davao\s+region|soccsksargen|caraga|luzon|visayas|mindanao)$/i.test(normalized)
+  ) {
     return { kind: "other-region", line };
   }
   return undefined;
@@ -306,11 +320,13 @@ function isArticleActionLead(
 function logicalSegment(
   textLines: string[],
   evidenceLines: string[],
-  target: Pick<PendingTarget, "scopeOverride" | "schoolOverride"> = {}
+  target: Pick<PendingTarget, "scopeOverride" | "schoolOverride"> = {},
+  restrictionLines: string[] = textLines
 ): LogicalAnnouncementSegment {
   return {
     text: textLines.join("\n"),
     evidenceExcerpt: evidenceLines.join("\n").slice(0, 600),
+    hasNarrowerRestriction: restrictionLines.some((line) => UNSUPPORTED_RESTRICTION.test(line)),
     ...target,
   };
 }
@@ -377,7 +393,8 @@ function buildLogicalSegments(lines: string[], articleTitle: string): LogicalAnn
           logicalSegment(
             [articleActionLine as string, line],
             [articleActionLine as string, ...(section ? [section.line] : []), line],
-            target
+            target,
+            [line]
           )
         );
         continue;
@@ -454,8 +471,8 @@ export function normalizeAnnouncementSegments(rawText: string, context: Normaliz
   if (lines.length > MAX_ARTICLE_LINES || lines.some((line) => line.length > MAX_STATEMENT_CHARACTERS)) {
     return [rejected(context.articleTitle, "article-complexity-limit")];
   }
-  if (UNSUPPORTED_RESTRICTION.test(rawText) || UNSUPPORTED_RESTRICTION.test(context.articleTitle)) {
-    return [rejected(rawText, "unsupported-restricted-scope")];
+  if (UNSUPPORTED_RESTRICTION.test(context.articleTitle)) {
+    return [rejected(context.articleTitle, "unsupported-restricted-scope")];
   }
   const relevantSegments = buildLogicalSegments(lines, context.articleTitle).filter(
     (segment) => SCHOOL_WORDS.test(segment.text) && hasStatementAction(segment.text)
@@ -465,6 +482,7 @@ export function normalizeAnnouncementSegments(rawText: string, context: Normaliz
   const results = relevantSegments.map<ParsedAnnouncement>((segment) => {
     const text = segment.text;
     const evidence = segment.evidenceExcerpt;
+    if (segment.hasNarrowerRestriction) return rejected(evidence, "unsupported-restricted-scope");
     if (NO_SUSPENSION.test(text)) return rejected(evidence, "explicit-no-suspension");
     if (UNCERTAIN.test(text)) return rejected(evidence, "uncertain-or-advisory-language");
     if (/until\s+further\s+notice|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\s*(?:-|to|through)\s*\d{1,2}/i.test(text)) {

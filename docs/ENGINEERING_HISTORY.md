@@ -13,6 +13,34 @@ exist. See `KNOWN_ISSUES.md` for things that still need action or Production ver
 - **VERIFY IN PRODUCTION** — code is fixed, but Git alone cannot prove the live environment matches it.
 - **INTENTIONAL DECISION** — behavior was deliberately chosen; do not undo it as “cleanup” without a reason.
 
+## 2026-09-15 — Zero-candidate source checks appeared as Unknown in Collector Health
+
+**Status:** RESOLVED IN CODE; verify after Production deployment
+
+### Root cause and fix
+
+The collector engine already logged structured discovery health, including `reachable_no_candidates`, but the
+admin health derivation ignored it and inferred attempts and successes from human-readable message prefixes.
+The zero-candidate success message began with `Discovery succeeded`, which the accepted `Discovery healthy` and
+`Discovery reachable` patterns did not match. The source therefore vanished from attempt, success, and latest-run
+counts despite a successful request. The overview card separately read process-local mutable source configuration,
+which is not durable across collector and admin serverless requests, instead of the persisted-log health model.
+
+Collector Health now treats the structured discovery status as authoritative. Healthy and reachable-with-no-
+candidates observations count as successful attempts; degraded, blocked, and failed observations count as failed
+attempts. Legacy message parsing remains only for persisted pre-structure logs. Latest-run denominators use the
+same enabled operational Tier 3 registry as collector eligibility, so a missing source observation is visible as
+an incomplete sweep instead of a misleading smaller denominator.
+The overview count now uses that same derived health model.
+
+### Lesson
+
+Operational state must be carried by typed data, not log prose. A successful check that finds no relevant items is
+still a successful source execution, and expected-source denominators must not be inferred only from observations
+that happened to be recognized.
+
+---
+
 ## 2026-09-14 — Valid GMA NCR entries were rejected by an unrelated article-wide restriction
 
 **Status:** RESOLVED IN CODE; verify after Production deployment

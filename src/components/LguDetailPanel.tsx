@@ -5,6 +5,7 @@ import { LGUInfo, PublicStatusHistoryEntry, SuspensionStatus, SuspensionRecord }
 import { NCR_SCHOOLS } from "@/data/schools";
 import { getNearestSheetSnap, getSheetSnapHeights, shouldDismissSheet } from "@/lib/bottomSheet";
 import { formatFreshness } from "@/lib/freshness";
+import { visiblePublicStatusHistory } from "@/lib/publicNcrProjection";
 import {
   X,
   ShieldCheck,
@@ -138,7 +139,7 @@ export function LguDetailPanel({ lgu, lastSuccessfulCheckAt, onClose }: LguDetai
   const record = lgu.primaryRecord;
   const freshness = formatFreshness(lastSuccessfulCheckAt, freshnessNow || (lastSuccessfulCheckAt ? new Date(lastSuccessfulCheckAt) : undefined));
   const lguSchools = NCR_SCHOOLS.filter((s) => s.lguId === lgu.id);
-  const visibleHistory = (lgu.history || []).slice(0, showAllHistory ? 7 : 3);
+  const visibleHistory = visiblePublicStatusHistory(lgu.history || [], showAllHistory);
 
   const handleShare = async () => {
     const statusText =
@@ -322,7 +323,7 @@ export function LguDetailPanel({ lgu, lastSuccessfulCheckAt, onClose }: LguDetai
       </div>
 
       {/* Body Content */}
-      <div className="lgu-detail-body flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-4 text-xs text-slate-600 dark:text-slate-300 sm:p-5 lg:overflow-hidden">
+      <div className={`lgu-detail-body flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-4 text-xs text-slate-600 dark:text-slate-300 sm:p-5 ${showAllHistory ? "lg:overflow-y-auto" : "lg:overflow-hidden"}`}>
         {/* Affected Education Levels */}
         {record && (
           <div className="shrink-0 space-y-2">

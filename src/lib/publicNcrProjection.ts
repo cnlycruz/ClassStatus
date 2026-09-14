@@ -37,6 +37,10 @@ export interface PublicNcrProjection {
   lgus: PublicNcrLguProjection[];
 }
 
+export function visiblePublicStatusHistory(history: readonly PublicStatusHistoryEntry[], showAll: boolean): readonly PublicStatusHistoryEntry[] {
+  return showAll ? history : history.slice(0, 3);
+}
+
 export function buildPublicNcrProjection(
   records: readonly SuspensionRecord[],
   options: { effectiveDate?: string; now?: Date; freshness?: CollectorFreshness; history?: readonly SuspensionRecord[] } = {},
@@ -76,7 +80,7 @@ export function buildPublicNcrProjection(
           if (!current || Date.parse(record.publishedAt) >= Date.parse(current.publishedAt)) byDate.set(record.effectiveDate, record);
           return byDate;
         }, new Map<string, SuspensionRecord>()).values()]
-        .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate)).slice(0, 7)
+        .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate))
         .map((record) => ({ effectiveDate: record.effectiveDate, status: record.status, affectedLevels: record.affectedLevels, schoolSector: record.schoolSector })),
     };
   });

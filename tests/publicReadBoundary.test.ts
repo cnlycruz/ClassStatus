@@ -142,6 +142,28 @@ describe("approved public suspension read boundary", () => {
     }
   });
 
+  it("retains expired valid publications in history while excluding removed and invalid records", async () => {
+    const expiredAutomatic = automaticRecord("expired-history", "manila", {
+      effectiveDate: "2026-08-20",
+      lifecycleState: "expired",
+      isActive: false,
+      isUpcoming: false,
+      isExpired: true,
+    });
+    const validManual = manualRecord("manual-history", "pasay");
+    const removed = automaticRecord("removed-history", "pasig", { administrativeState: "removed" });
+    const invalidCollector = automaticRecord("invalid-history", "taguig", { collectorProvenance: undefined });
+    fs.writeFileSync(
+      path.join(testDataDirectory, "published_history.json"),
+      JSON.stringify([expiredAutomatic, validManual, removed, invalidCollector]),
+    );
+
+    const history = await localSuspensionStore.listPublicHistory();
+
+    expect(history.map((record) => record.id)).toEqual(["expired-history", "manual-history"]);
+    expect(history[0]).toMatchObject({ effectiveDate: "2026-08-20", isExpired: true });
+  });
+
   it("lets projected automatic and manual records update the public LGU dashboard", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-28T08:00:00+08:00"));

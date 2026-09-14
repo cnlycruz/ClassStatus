@@ -87,6 +87,7 @@ describe("public responsive UI contracts", () => {
     expect(panel).toContain("onPointerDown={handlePointerDown}");
     expect(panel).toContain("touch-none");
     expect(panel).toContain("lg:flex-1 lg:overflow-y-auto");
+    expect(panel).toContain('showAllHistory ? "lg:overflow-y-auto" : "lg:overflow-hidden"');
     expect(panel).not.toContain("max-h-44");
     expect(globals).not.toContain("lgu-detail-scroll-region");
   });

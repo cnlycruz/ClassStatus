@@ -177,7 +177,7 @@ describe("NCR map viewport interaction", () => {
     expect(componentSource).toContain("shouldActivateNcrMapTarget(gesture)");
   });
 
-  it("captures the initial touch pointer before movement while preserving tap activation", () => {
+  it("captures touch immediately but waits for a real drag before capturing a mouse", () => {
     const pointerDown = componentSource.slice(
       componentSource.indexOf("const handlePointerDown"),
       componentSource.indexOf("const handlePointerMove")
@@ -187,9 +187,11 @@ describe("NCR map viewport interaction", () => {
       componentSource.indexOf("const finishPointer")
     );
 
+    expect(pointerDown).toContain('if (event.pointerType !== "mouse")');
     expect(pointerDown).toContain("setPointerCapture(event.pointerId)");
     expect(pointerMove).toContain("shouldCaptureNcrMapPointer");
-    expect(pointerMove).not.toContain("setPointerCapture(event.pointerId)");
+    expect(pointerMove).toContain("setPointerCapture(event.pointerId)");
+    expect(pointerMove.indexOf("setPointerCapture(event.pointerId)")).toBeGreaterThan(pointerMove.indexOf("shouldCaptureNcrMapPointer"));
     expect(componentSource.match(/onSelectLgu\(pathItem\.lguId\)/g)).toHaveLength(3);
     expect(componentSource).toContain("onClearSelection()");
   });

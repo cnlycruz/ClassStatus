@@ -256,12 +256,13 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
     const gesture = gestureRef.current;
     gesture.pointers.set(event.pointerId, point);
 
-    // Capture from the first contact. On mobile, waiting until the drag
-    // threshold has been crossed gives the browser an opportunity to cancel
-    // the pointer stream before the map owns the gesture. Capture does not
-    // turn a tap into a drag: that remains governed by hasMoved below.
-    event.currentTarget.setPointerCapture(event.pointerId);
-    gesture.capturedPointers.add(event.pointerId);
+    // Touch needs capture from first contact so mobile browsers cannot cancel
+    // the gesture stream. A captured mouse pointer retargets the later click
+    // away from the LGU path, so mouse capture starts only after a real drag.
+    if (event.pointerType !== "mouse") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      gesture.capturedPointers.add(event.pointerId);
+    }
 
     if (gesture.pointers.size === 1) {
       gesture.mode = "pan";
@@ -295,6 +296,10 @@ export const NcrInteractiveMap = React.memo(function NcrInteractiveMap({
       }
 
       gesture.hasMoved = true;
+      if (!gesture.capturedPointers.has(event.pointerId)) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        gesture.capturedPointers.add(event.pointerId);
+      }
       scheduleView(ncrPanView({
         scale: viewRef.current.scale,
         dragOffset: gesture.dragOffset,

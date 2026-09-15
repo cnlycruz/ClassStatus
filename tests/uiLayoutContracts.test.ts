@@ -21,22 +21,31 @@ describe("public responsive UI contracts", () => {
     expect(adminConsole).toContain("Download Share Card");
   });
 
-  it("uses an intentional two-row mobile action layout without changing the desktop controls", () => {
+  it("uses exactly four deterministic hero layouts at the required viewport boundaries", () => {
     const statusHero = read("src", "components", "StatusHero.tsx");
+    const heroStyles = read("src", "components", "StatusHero.module.css");
 
-    expect(statusHero).toContain("const STATUS_HERO_CONTROL_LAYOUT");
-    expect(statusHero).toContain("grid-cols-[max-content_minmax(0,1fr)]");
-    expect(statusHero).toContain("col-span-2 grid w-full grid-cols-2");
-    expect(statusHero).toContain("grid-cols-2 items-center gap-0.5");
-    expect(statusHero).toContain("sm:flex sm:w-auto sm:flex-wrap");
-    expect(statusHero).toContain("sm:flex sm:w-auto");
+    expect(statusHero).toContain('import styles from "./StatusHero.module.css"');
     expect(statusHero).toContain("min-h-11");
-    expect(statusHero).toContain("sm:w-[13.75rem] sm:whitespace-nowrap sm:px-4 sm:text-sm");
-    expect(statusHero).toContain('className="sm:hidden"');
-    expect(statusHero).toContain('className="hidden sm:inline"');
+    expect(statusHero).toContain("styles.shareLabelShort");
+    expect(statusHero).toContain("styles.shareLabelLong");
     expect(statusHero).not.toContain("sm:min-h-10");
     expect(statusHero).toContain("sm:h-4 sm:w-4");
     expect(statusHero).not.toMatch(/innerWidth|matchMedia|useMediaQuery|isMobile|isDesktop|typeof window|resize/);
+    expect(statusHero).not.toContain("flex-wrap");
+
+    expect(heroStyles).toContain("@media (min-width: 560px) and (max-width: 899px)");
+    expect(heroStyles).toContain("@media (min-width: 900px) and (max-width: 1399px)");
+    expect(heroStyles).toContain("@media (min-width: 1400px)");
+    expect(heroStyles).not.toMatch(/auto-fit|auto-fill|@container/);
+
+    expect(heroStyles).toContain('"heading heading"\n    "statuses statuses"\n    "refresh share"\n    "view view"');
+    expect(heroStyles).toContain('"heading heading heading"\n      "statuses statuses statuses"\n      "refresh share view"');
+    expect(heroStyles).toContain('"heading statuses refresh"\n      "heading share view"');
+    expect(heroStyles).toContain('"heading statuses refresh share view"');
+    expect(heroStyles.match(/grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/g)).toHaveLength(1);
+    expect(heroStyles.match(/grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/g)).toHaveLength(1);
+    expect(heroStyles.match(/grid-template-columns: repeat\(4, max-content\)/g)).toHaveLength(2);
   });
 
   it("keeps public navigation and map controls at pointer-independent touch sizes", () => {

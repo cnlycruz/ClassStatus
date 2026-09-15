@@ -1,0 +1,198 @@
+.layout {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-areas:
+    "heading heading"
+    "statuses statuses"
+    "refresh share"
+    "view view"
+    "error error";
+  align-items: center;
+  column-gap: 0.5rem;
+  row-gap: 0.75rem;
+}
+
+.heading {
+  grid-area: heading;
+}
+
+.subtitle {
+  overflow-wrap: anywhere;
+}
+
+.statuses {
+  grid-area: statuses;
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.statusButton {
+  overflow: hidden;
+}
+
+.refresh {
+  grid-area: refresh;
+}
+
+.share {
+  grid-area: share;
+  width: 100%;
+}
+
+.shareLabelLong {
+  display: none;
+}
+
+.view {
+  grid-area: view;
+  width: 100%;
+}
+
+.error {
+  grid-area: error;
+}
+
+@media (min-width: 560px) and (max-width: 899px) {
+  .layout {
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    grid-template-areas:
+      "heading heading heading"
+      "statuses statuses statuses"
+      "refresh share view"
+      "error error error";
+  }
+
+  .statuses {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .shareLabelShort {
+    display: none;
+  }
+
+  .shareLabelLong {
+    display: inline;
+  }
+
+  .view {
+    width: max-content;
+  }
+}
+
+@media (min-width: 900px) and (max-width: 1399px) {
+  .layout {
+    grid-template-columns: minmax(15rem, 1fr) max-content max-content;
+    grid-template-areas:
+      "heading statuses refresh"
+      "heading share view"
+      ". error error";
+    column-gap: 0.5rem;
+    row-gap: 0.5rem;
+  }
+
+  .heading {
+    align-self: center;
+    padding-right: 0.75rem;
+  }
+
+  .statuses {
+    width: max-content;
+    grid-template-columns: repeat(4, max-content);
+    justify-self: end;
+  }
+
+  .statusButton {
+    gap: 0.25rem;
+    padding-inline: 0.375rem;
+    font-size: 0.6875rem;
+  }
+
+  .statusButton svg {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  .share {
+    width: 11rem;
+    justify-self: end;
+    font-size: 0.75rem;
+  }
+
+  .shareLabelShort {
+    display: none;
+  }
+
+  .shareLabelLong {
+    display: inline;
+  }
+
+  .refresh {
+    justify-self: start;
+    padding-inline: 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  .view {
+    width: max-content;
+  }
+}
+
+@media (min-width: 1400px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr) max-content max-content max-content max-content;
+    grid-template-areas:
+      "heading statuses refresh share view"
+      ". error error error error";
+    column-gap: 0.5rem;
+    row-gap: 0.5rem;
+  }
+
+  .heading {
+    padding-right: 0.5rem;
+  }
+
+  .subtitle {
+    font-size: 0.6875rem;
+    white-space: nowrap;
+  }
+
+  .statuses {
+    width: max-content;
+    grid-template-columns: repeat(4, max-content);
+  }
+
+  .statusButton {
+    gap: 0.25rem;
+    padding-inline: 0.375rem;
+    font-size: 0.6875rem;
+  }
+
+  .statusButton svg {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  .refresh {
+    padding-inline: 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  .share {
+    width: 11rem;
+    font-size: 0.75rem;
+  }
+
+  .shareLabelShort {
+    display: none;
+  }
+
+  .shareLabelLong {
+    display: inline;
+  }
+
+  .view {
+    width: max-content;
+  }
+}

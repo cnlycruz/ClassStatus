@@ -22,8 +22,7 @@ describe("public share-card action", () => {
     expect(html).toContain("Share Card");
     expect(html).toContain('aria-label="Download Share Card"');
     expect(html).toContain('aria-busy="false"');
-    expect(html).toContain("sm:w-[13.75rem]");
-    expect(html).toContain("sm:whitespace-nowrap");
+    expect(html).toContain("whitespace-nowrap");
     expect(html).not.toContain("Generating…");
     expect(html).not.toContain("animate-share-card-download");
   });
@@ -77,9 +76,8 @@ describe("public share-card action", () => {
       const desktopMarkup = renderStatusHero();
 
       expect(mobileMarkup).toBe(desktopMarkup);
-      expect(mobileMarkup).toContain(
-        "grid w-full min-w-0 grid-cols-[max-content_minmax(0,1fr)] items-center gap-2 sm:flex sm:flex-wrap xl:w-auto xl:justify-end",
-      );
+      expect(mobileMarkup).toContain("May pasok ba?");
+      expect(mobileMarkup).toContain("Filter by class status");
     } finally {
       if (originalWindow) {
         Object.defineProperty(globalThis, "window", originalWindow);

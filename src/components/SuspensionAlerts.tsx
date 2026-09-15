@@ -6,6 +6,7 @@ import { Bell, BellOff, CheckSquare, LoaderCircle, Square, X } from "lucide-reac
 import { ALL_LGU_IDS, NCR_LGUS } from "@/data/lgus";
 import type { LGUId } from "@/types";
 import { allAlertLocations, shouldAutoOpenAlertSetup, SUSPENSION_ALERTS_DISMISS_KEY } from "@/lib/notifications/ux";
+import { usePortfolioEmbedMode } from "@/components/EmbedModeProvider";
 
 const SUBSCRIPTION_KEY = "classstatus-push-subscription-id";
 
@@ -21,6 +22,7 @@ function isPushCapable() { return "serviceWorker" in navigator && "PushManager" 
 function isAppleMobileBrowser() { return /iPad|iPhone|iPod/.test(navigator.userAgent); }
 
 export function SuspensionAlerts({ selectedLguId }: { selectedLguId?: LGUId | null }) {
+  const portfolioEmbed = usePortfolioEmbedMode();
   const [ready, setReady] = useState(false);
   const [supported, setSupported] = useState<boolean | null>(null);
   const [publicKey, setPublicKey] = useState<string | null>(null);
@@ -55,10 +57,10 @@ export function SuspensionAlerts({ selectedLguId }: { selectedLguId?: LGUId | nu
 
   useEffect(() => { if (selectedLguId && !selected.length) setSelected([selectedLguId]); }, [selectedLguId, selected.length]);
   useEffect(() => {
-    if (!shouldAutoOpenAlertSetup({ ready, supported, configured: Boolean(publicKey), enabled, permission, dismissed: autoDismissed.current, openedThisVisit: autoOpened.current })) return;
+    if (!shouldAutoOpenAlertSetup({ ready, supported, configured: Boolean(publicKey), enabled, permission, dismissed: autoDismissed.current, openedThisVisit: autoOpened.current, portfolioEmbed })) return;
     autoOpened.current = true;
     setOpen(true);
-  }, [enabled, permission, publicKey, ready, supported]);
+  }, [enabled, permission, portfolioEmbed, publicKey, ready, supported]);
   useEffect(() => {
     if (open) {
       wasOpen.current = true;

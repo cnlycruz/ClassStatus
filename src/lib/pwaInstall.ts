@@ -102,11 +102,13 @@ export function isDismissalActive(
 export function shouldAutoShowInstallPrompt({
   state,
   now,
+  portfolioEmbed = false,
 }: {
   state: InstallState;
   now: number;
+  portfolioEmbed?: boolean;
 }): boolean {
-  if (!state.ready || state.standalone || state.installed || isDismissalActive(state.dismissedAt, now)) {
+  if (portfolioEmbed || !state.ready || state.standalone || state.installed || isDismissalActive(state.dismissedAt, now)) {
     return false;
   }
 

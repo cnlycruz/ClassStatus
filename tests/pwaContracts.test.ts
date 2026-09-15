@@ -6,7 +6,7 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 
 const read = (...parts: string[]) => fs.readFileSync(path.join(process.cwd(), ...parts), "utf8");
-const loadContentSecurityPolicy = (portfolioOrigin?: string) => {
+const loadContentSecurityPolicy = (portfolioOrigin?: string, portfolioDevOrigin?: string) => {
   const configUrl = pathToFileURL(path.join(process.cwd(), "next.config.mjs")).href;
   const script = `
     import config from ${JSON.stringify(configUrl)};
@@ -15,7 +15,9 @@ const loadContentSecurityPolicy = (portfolioOrigin?: string) => {
   `;
   const env = { ...process.env };
   delete env.PORTFOLIO_ORIGIN;
+  delete env.PORTFOLIO_DEV_ORIGIN;
   if (portfolioOrigin !== undefined) env.PORTFOLIO_ORIGIN = portfolioOrigin;
+  if (portfolioDevOrigin !== undefined) env.PORTFOLIO_DEV_ORIGIN = portfolioDevOrigin;
   return execFileSync(process.execPath, ["--input-type=module", "--eval", script], { env, encoding: "utf8" }).trim();
 };
 
@@ -106,7 +108,8 @@ describe("PWA contracts", () => {
       'process.env.NODE_ENV === "production" ? "; upgrade-insecure-requests" : ""'
     );
     expect(nextConfig).toContain("frame-ancestors ${frameAncestors}${upgradeInsecureRequests}");
-    expect(nextConfig).toContain("http://localhost:3000 http://127.0.0.1:3000");
+    expect(nextConfig).toContain('"http://localhost:3000"');
+    expect(nextConfig).toContain('"http://127.0.0.1:3000"');
     expect(nextConfig).not.toContain("frame-ancestors 'none'");
     expect(nextConfig).not.toContain('key: "X-Frame-Options"');
   });
@@ -116,11 +119,12 @@ describe("PWA contracts", () => {
     expect(withoutPortfolio).toContain("frame-ancestors 'self' http://localhost:3000 http://127.0.0.1:3000");
     expect(withoutPortfolio).not.toContain("undefined");
 
-    const withPortfolio = loadContentSecurityPolicy("  https://portfolio.example/  ");
-    expect(withPortfolio).toContain("frame-ancestors 'self' https://portfolio.example http://localhost:3000 http://127.0.0.1:3000");
+    const withPortfolio = loadContentSecurityPolicy("  https://portfolio.example/  ", "  http://192.168.1.36:3000/  ");
+    expect(withPortfolio).toContain("frame-ancestors 'self' https://portfolio.example http://192.168.1.36:3000 http://localhost:3000 http://127.0.0.1:3000");
     expect(withPortfolio).not.toContain("https://portfolio.example/");
+    expect(withPortfolio).not.toContain("http://192.168.1.36:3000/");
 
-    const withInvalidPortfolio = loadContentSecurityPolicy("https://portfolio.example/path");
+    const withInvalidPortfolio = loadContentSecurityPolicy("https://portfolio.example/path", "http://192.168.1.36:3000/path");
     expect(withInvalidPortfolio).toBe(withoutPortfolio);
 
     for (const policy of [withoutPortfolio, withPortfolio, withInvalidPortfolio]) {

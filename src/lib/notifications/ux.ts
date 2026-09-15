@@ -19,6 +19,7 @@ export function shouldAutoOpenAlertSetup(input: {
   permission: NotificationPermission | "unsupported";
   dismissed: boolean;
   openedThisVisit: boolean;
+  portfolioEmbed?: boolean;
 }): boolean {
-  return input.ready && input.supported === true && input.configured && !input.enabled && input.permission !== "denied" && !input.dismissed && !input.openedThisVisit;
+  return !input.portfolioEmbed && input.ready && input.supported === true && input.configured && !input.enabled && input.permission !== "denied" && !input.dismissed && !input.openedThisVisit;
 }

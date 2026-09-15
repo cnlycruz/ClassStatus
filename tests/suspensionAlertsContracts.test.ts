@@ -18,6 +18,7 @@ describe("public suspension-alert settings contracts", () => {
     expect(alerts).toContain("SUSPENSION_ALERTS_DISMISS_KEY");
     expect(alerts).toContain("shouldAutoOpenAlertSetup");
     expect(alerts).toContain("openedThisVisit: autoOpened.current");
+    expect(alerts).toContain("portfolioEmbed");
     expect(alerts).toContain('onClick={() => setOpen(true)}');
     expect(alerts).toContain("Don&apos;t show again");
     expect(alerts).toContain('Notification.requestPermission()');

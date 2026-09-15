@@ -7,6 +7,7 @@ describe("notification UX state", () => {
 
   it("auto-opens only once for an eligible fresh visit", () => {
     expect(shouldAutoOpenAlertSetup(eligible)).toBe(true);
+    expect(shouldAutoOpenAlertSetup({ ...eligible, portfolioEmbed: true })).toBe(false);
     expect(shouldAutoOpenAlertSetup({ ...eligible, openedThisVisit: true })).toBe(false);
     expect(shouldAutoOpenAlertSetup({ ...eligible, dismissed: true })).toBe(false);
     expect(shouldAutoOpenAlertSetup({ ...eligible, enabled: true })).toBe(false);

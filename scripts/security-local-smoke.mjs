@@ -31,6 +31,7 @@ Object.assign(env, {
   CLASSSTATUS_STORAGE_DRIVER: "local-json", CLASSSTATUS_DATA_DIR: tempRoot,
   CLASSSTATUS_SUPABASE_NAMESPACE: "preview", CLASSSTATUS_PUBLIC_ORIGIN: origin,
   PORTFOLIO_ORIGIN: "  https://portfolio.example/  ",
+  PORTFOLIO_DEV_ORIGIN: "  http://192.168.1.36:3000/  ",
   CLASSSTATUS_ADMIN_USERNAME: "audit-local", CLASSSTATUS_ADMIN_PASSWORD_HASH: await argon2.hash(password),
   CLASSSTATUS_SESSION_SECRET: randomBytes(32).toString("base64"),
 });
@@ -78,7 +79,7 @@ try {
         assert.equal(response.headers.get("x-content-type-options"), "nosniff");
         assert.equal(response.headers.get("x-frame-options"), null);
         const contentSecurityPolicy = response.headers.get("content-security-policy") || "";
-        assert.ok(contentSecurityPolicy.includes("frame-ancestors 'self' https://portfolio.example http://localhost:3000 http://127.0.0.1:3000"));
+        assert.ok(contentSecurityPolicy.includes("frame-ancestors 'self' https://portfolio.example http://192.168.1.36:3000 http://localhost:3000 http://127.0.0.1:3000"));
         assert.ok(!contentSecurityPolicy.includes("frame-ancestors 'none'"));
         assert.ok(!contentSecurityPolicy.includes("frame-ancestors *"));
         assert.ok(!contentSecurityPolicy.includes("unsafe-eval"));

@@ -33,6 +33,7 @@ function promptEvent(outcome: "accepted" | "dismissed"): BeforeInstallPromptEven
 describe("PWA install eligibility", () => {
   it("allows the popup for an eligible non-installed user", () => {
     expect(shouldAutoShowInstallPrompt({ state: eligibleState(), now: Date.now() })).toBe(true);
+    expect(shouldAutoShowInstallPrompt({ state: eligibleState(), now: Date.now(), portfolioEmbed: true })).toBe(false);
   });
 
   it("does not allow the popup while running standalone", () => {

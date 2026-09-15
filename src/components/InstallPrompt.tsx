@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { Download, X } from "lucide-react";
 import { useInstallState } from "@/components/InstallProvider";
 import { shouldAutoShowInstallPrompt } from "@/lib/pwaInstall";
+import { usePortfolioEmbedMode } from "@/components/EmbedModeProvider";
 
 const AUTO_SHOW_DELAY_MS = 9_000;
 const INTERACTION_SHOW_DELAY_MS = 1_200;
@@ -16,6 +17,7 @@ const FOCUSABLE_SELECTOR =
 
 export function InstallPrompt() {
   const pathname = usePathname();
+  const portfolioEmbed = usePortfolioEmbedMode();
   const installState = useInstallState();
   const { dismissPrompt, requestInstall } = installState;
   const [delayElapsed, setDelayElapsed] = useState(false);
@@ -27,7 +29,7 @@ export function InstallPrompt() {
   const attemptedRef = useRef(false);
 
   useEffect(() => {
-    if (pathname !== "/") return;
+    if (pathname !== "/" || portfolioEmbed) return;
 
     const delayTimer = window.setTimeout(() => setDelayElapsed(true), AUTO_SHOW_DELAY_MS);
     const markInteraction = () => setHasInteracted(true);
@@ -41,11 +43,11 @@ export function InstallPrompt() {
       window.removeEventListener("keydown", markInteraction);
       window.removeEventListener("scroll", markInteraction);
     };
-  }, [pathname]);
+  }, [pathname, portfolioEmbed]);
 
   useEffect(() => {
     if (pathname !== "/" || attemptedRef.current || (!delayElapsed && !hasInteracted)) return;
-    if (!shouldAutoShowInstallPrompt({ state: installState, now: Date.now() })) return;
+    if (!shouldAutoShowInstallPrompt({ state: installState, now: Date.now(), portfolioEmbed })) return;
 
     const showTimer = window.setTimeout(
       () => {
@@ -58,7 +60,7 @@ export function InstallPrompt() {
     );
 
     return () => window.clearTimeout(showTimer);
-  }, [delayElapsed, hasInteracted, installState, pathname]);
+  }, [delayElapsed, hasInteracted, installState, pathname, portfolioEmbed]);
 
   const closeWithoutDismissal = useCallback(() => {
     setIsOpen(false);

@@ -9,11 +9,24 @@ function supabaseConnectOrigin() {
     return "";
   }
 }
+function portfolioFrameOrigin() {
+  const configuredOrigin = process.env.PORTFOLIO_ORIGIN?.trim();
+  if (!configuredOrigin) return "";
+
+  try {
+    const url = new URL(configuredOrigin);
+    const isHttpOrigin = url.protocol === "http:" || url.protocol === "https:";
+    const isExactOrigin = !url.username && !url.password && url.pathname === "/" && !url.search && !url.hash;
+    return isHttpOrigin && isExactOrigin ? ` ${url.origin}` : "";
+  } catch {
+    return "";
+  }
+}
 const supabaseOrigin = supabaseConnectOrigin();
+const frameAncestors = `'self'${portfolioFrameOrigin()} http://localhost:3000 http://127.0.0.1:3000`;
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: `default-src 'self'; script-src 'self' 'unsafe-inline'${developmentEval}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'${supabaseOrigin}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'${upgradeInsecureRequests}` },
+  { key: "Content-Security-Policy", value: `default-src 'self'; script-src 'self' 'unsafe-inline'${developmentEval}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'${supabaseOrigin}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors ${frameAncestors}${upgradeInsecureRequests}` },
   { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
 ];

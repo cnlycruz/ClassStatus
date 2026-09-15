@@ -30,6 +30,7 @@ Object.assign(env, {
   NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1",
   CLASSSTATUS_STORAGE_DRIVER: "local-json", CLASSSTATUS_DATA_DIR: tempRoot,
   CLASSSTATUS_SUPABASE_NAMESPACE: "preview", CLASSSTATUS_PUBLIC_ORIGIN: origin,
+  PORTFOLIO_ORIGIN: "  https://portfolio.example/  ",
   CLASSSTATUS_ADMIN_USERNAME: "audit-local", CLASSSTATUS_ADMIN_PASSWORD_HASH: await argon2.hash(password),
   CLASSSTATUS_SESSION_SECRET: randomBytes(32).toString("base64"),
 });
@@ -75,9 +76,12 @@ try {
       for (const route of ["/", "/about", "/sources", "/install", "/collector/login", "/manifest.webmanifest", "/sw.js"]) {
         const response = await request(route, 200);
         assert.equal(response.headers.get("x-content-type-options"), "nosniff");
-        assert.equal(response.headers.get("x-frame-options"), "DENY");
-        assert.ok(response.headers.get("content-security-policy")?.includes("frame-ancestors 'none'"));
-        assert.ok(!response.headers.get("content-security-policy")?.includes("unsafe-eval"));
+        assert.equal(response.headers.get("x-frame-options"), null);
+        const contentSecurityPolicy = response.headers.get("content-security-policy") || "";
+        assert.ok(contentSecurityPolicy.includes("frame-ancestors 'self' https://portfolio.example http://localhost:3000 http://127.0.0.1:3000"));
+        assert.ok(!contentSecurityPolicy.includes("frame-ancestors 'none'"));
+        assert.ok(!contentSecurityPolicy.includes("frame-ancestors *"));
+        assert.ok(!contentSecurityPolicy.includes("unsafe-eval"));
       }
       assert.equal((await request("/collector", 307)).headers.get("location"), "/collector/login");
       const publicRoutes = ["/api/lgus", "/api/suspensions", "/api/schools", "/api/demo-mode", "/api/alerts/config"];

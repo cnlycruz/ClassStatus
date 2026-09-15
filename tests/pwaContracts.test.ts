@@ -1,9 +1,23 @@
 import fs from "fs";
 import path from "path";
+import { execFileSync } from "child_process";
+import { pathToFileURL } from "url";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 
 const read = (...parts: string[]) => fs.readFileSync(path.join(process.cwd(), ...parts), "utf8");
+const loadContentSecurityPolicy = (portfolioOrigin?: string) => {
+  const configUrl = pathToFileURL(path.join(process.cwd(), "next.config.mjs")).href;
+  const script = `
+    import config from ${JSON.stringify(configUrl)};
+    const routes = await config.headers();
+    console.log(routes[0].headers.find(({ key }) => key === "Content-Security-Policy").value);
+  `;
+  const env = { ...process.env };
+  delete env.PORTFOLIO_ORIGIN;
+  if (portfolioOrigin !== undefined) env.PORTFOLIO_ORIGIN = portfolioOrigin;
+  return execFileSync(process.execPath, ["--input-type=module", "--eval", script], { env, encoding: "utf8" }).trim();
+};
 
 describe("PWA contracts", () => {
   it("publishes the Class Status manifest and icon set", () => {
@@ -91,7 +105,33 @@ describe("PWA contracts", () => {
     expect(nextConfig).toContain(
       'process.env.NODE_ENV === "production" ? "; upgrade-insecure-requests" : ""'
     );
-    expect(nextConfig).toContain("frame-ancestors 'none'${upgradeInsecureRequests}");
-    expect(nextConfig).not.toContain("frame-ancestors 'none'; upgrade-insecure-requests`");
+    expect(nextConfig).toContain("frame-ancestors ${frameAncestors}${upgradeInsecureRequests}");
+    expect(nextConfig).toContain("http://localhost:3000 http://127.0.0.1:3000");
+    expect(nextConfig).not.toContain("frame-ancestors 'none'");
+    expect(nextConfig).not.toContain('key: "X-Frame-Options"');
+  });
+
+  it("allows framing only from configured and local portfolio origins", () => {
+    const withoutPortfolio = loadContentSecurityPolicy();
+    expect(withoutPortfolio).toContain("frame-ancestors 'self' http://localhost:3000 http://127.0.0.1:3000");
+    expect(withoutPortfolio).not.toContain("undefined");
+
+    const withPortfolio = loadContentSecurityPolicy("  https://portfolio.example/  ");
+    expect(withPortfolio).toContain("frame-ancestors 'self' https://portfolio.example http://localhost:3000 http://127.0.0.1:3000");
+    expect(withPortfolio).not.toContain("https://portfolio.example/");
+
+    const withInvalidPortfolio = loadContentSecurityPolicy("https://portfolio.example/path");
+    expect(withInvalidPortfolio).toBe(withoutPortfolio);
+
+    for (const policy of [withoutPortfolio, withPortfolio, withInvalidPortfolio]) {
+      expect(policy).not.toContain("frame-ancestors 'none'");
+      expect(policy).not.toContain("frame-ancestors *");
+      expect(policy).toContain("script-src 'self' 'unsafe-inline'");
+      expect(policy).toContain("style-src 'self' 'unsafe-inline'");
+      expect(policy).toContain("connect-src 'self'");
+      expect(policy).toContain("object-src 'none'");
+      expect(policy).toContain("base-uri 'self'");
+      expect(policy).toContain("form-action 'self'");
+    }
   });
 });

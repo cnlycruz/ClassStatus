@@ -31,20 +31,6 @@ export function getAdminConfig(): AdminConfig {
   };
 }
 
-function parseSecret(name: string): Buffer {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error("ADMIN_AUTH_UNAVAILABLE");
-  const secret = Buffer.from(value, "base64");
-  if (secret.length < 32) throw new Error("ADMIN_AUTH_UNAVAILABLE");
-  return secret;
-}
-
-export function getSecurityPepper(): Buffer {
-  if (getStorageDriver() === "local-json") return getAdminConfig().sessionSecret;
-  return parseSecret("CLASSSTATUS_SECURITY_PEPPER");
-}
-
-
 export function getSecurityPepper(): Buffer {
   return getAdminConfig().sessionSecret;
 }

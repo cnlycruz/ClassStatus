@@ -4,7 +4,6 @@ import { appendAudit } from "@/lib/admin/audit";
 import { authenticateAndIssueAdminSession, checkLoginThrottle, recordLoginFailure, revokeAdminSession, verifyLoginChallenge } from "@/lib/admin/auth";
 import { getPublicOrigin } from "@/lib/admin/config";
 import { AdminHttpError, adminErrorResponse, readBoundedJson } from "@/lib/admin/requestSecurity";
-import { getStorageDriver } from "@/lib/storage/driver";
 
 const schema = z.object({ username: z.string().min(1).max(128), password: z.string().min(1).max(128), challenge: z.string().min(1).max(512) }).strict();
 export async function POST(request: NextRequest) {
@@ -22,9 +21,7 @@ export async function POST(request: NextRequest) {
     const session = await authenticateAndIssueAdminSession(normalizedUsername, body.password);
     if (!session) {
       await recordLoginFailure(normalizedUsername);
-      if (getStorageDriver() === "local-json") {
-        try { await appendAudit({ action: "login", outcome: "failure", reasonCode: "invalid-credentials" }); } catch { /* security storage remains authoritative */ }
-      }
+      try { await appendAudit({ action: "login", outcome: "failure", reasonCode: "invalid-credentials" }); } catch { /* security storage remains authoritative */ }
       return Response.json({ success: false, error: "AUTHENTICATION_FAILED" }, { status: 401, headers: { "Cache-Control": "no-store, private" } });
     }
     try { await appendAudit({ action: "login", outcome: "success", correlationId: session.id }); }

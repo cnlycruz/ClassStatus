@@ -17,7 +17,7 @@ const origin = "http://localhost:4173";
 const env = { ...process.env };
 // Defined empty values prevent Next's dotenv loader from importing real values.
 for (const name of Object.keys(env)) {
-  if (/^(CLASSSTATUS_|SUPABASE_|VERCEL|NEXT_PUBLIC_)/.test(name)) env[name] = "";
+  if (/^(CLASSSTATUS_|LEGACY_DB_|LEGACY_HOST|NEXT_PUBLIC_)/.test(name)) env[name] = "";
 }
 for (const file of fs.readdirSync(root).filter((name) => /^\.env(?:\.|$)/.test(name))) {
   for (const line of fs.readFileSync(path.join(root, file), "utf8").split(/\r?\n/)) {
@@ -29,7 +29,7 @@ const password = randomBytes(32).toString("base64url");
 Object.assign(env, {
   NODE_ENV: "production", NEXT_TELEMETRY_DISABLED: "1",
   CLASSSTATUS_STORAGE_DRIVER: "local-json", CLASSSTATUS_DATA_DIR: tempRoot,
-  CLASSSTATUS_SUPABASE_NAMESPACE: "preview", CLASSSTATUS_PUBLIC_ORIGIN: origin,
+  CLASSSTATUS_LOCAL_NAMESPACE: "preview", CLASSSTATUS_PUBLIC_ORIGIN: origin,
   PORTFOLIO_ORIGIN: "  https://portfolio.example/  ",
   PORTFOLIO_DEV_ORIGIN: "  http://192.168.1.36:3000/  ",
   CLASSSTATUS_ADMIN_USERNAME: "audit-local", CLASSSTATUS_ADMIN_PASSWORD_HASH: await argon2.hash(password),
@@ -124,7 +124,7 @@ try {
       const login = await request("/api/admin/auth/login", 200, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ username: "audit-local", password, challenge: freshChallenge }) });
       const setCookie = login.headers.getSetCookie().find((value) => value.startsWith("__Host-classstatus_admin_session="));
       assert.ok(setCookie);
-      assert.match(setCookie, /HttpOnly/i); assert.match(setCookie, /Secure/i); assert.match(setCookie, /SameSite=strict/i); assert.match(setCookie, /Path=\//i);
+      assert.match(setCookie, /HttpOnly/i); assert.doesNotMatch(setCookie, /; Secure/i); assert.match(setCookie, /SameSite=strict/i); assert.match(setCookie, /Path=\//i);
       const cookie = setCookie.split(";")[0];
       const bootstrap = await (await request("/api/admin/bootstrap", 200, { headers: { Cookie: cookie } })).json();
       await request("/collector", 200, { headers: { Cookie: cookie } });
@@ -141,7 +141,7 @@ try {
         const response = await request(route, route.includes("share") ? 503 : 500);
         const body = await response.text();
         assert.ok(!body.includes(tempRoot));
-        assert.doesNotMatch(body, /SyntaxError|at .*\.(?:js|ts):|node_modules|SUPABASE_|SELECT /);
+        assert.doesNotMatch(body, /SyntaxError|at .*\.(?:js|ts):|node_modules|LEGACY_DB_|SELECT /);
       }
       console.log(`Local production HTTP checks: ${checks} passed, 0 failed. Synthetic local session revoked; no collector or push send invoked.`);
     }

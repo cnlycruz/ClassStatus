@@ -230,7 +230,7 @@ export const localSuspensionStore: SuspensionStore = {
       }
       const confirmation = state.confirmations.find((item) => item.id === input.confirmationId && item.sessionId === input.sessionId && item.payloadHash === input.confirmationPayloadHash);
       if (!confirmation || confirmation.consumedAt || Date.parse(confirmation.expiresAt) <= Date.now()) throw new Error("confirmation-invalid");
-      const namespace = process.env.CLASSSTATUS_SUPABASE_NAMESPACE === "production" ? "production" : "preview";
+      const namespace = process.env.CLASSSTATUS_LOCAL_NAMESPACE === "production" ? "production" : "preview";
       const expectedEventKey = noticeEventKey(namespace, input.record);
       const duplicate = state.records.find((item) =>
         effectiveAdminState(item) !== "removed"
@@ -299,7 +299,7 @@ export const localSuspensionStore: SuspensionStore = {
   async upsertCollected(input): Promise<CollectedUpsertResult> {
     return localStateStore.mutateStateIfChanged<CollectedUpsertResult>((state) => {
       const candidate = input.candidate;
-      const namespace = process.env.CLASSSTATUS_SUPABASE_NAMESPACE === "production" ? "production" : "preview";
+      const namespace = process.env.CLASSSTATUS_LOCAL_NAMESPACE === "production" ? "production" : "preview";
       const expectedEventKey = noticeEventKey(namespace, candidate);
       const expectedFamilyKey = noticeFamilyKey(namespace, candidate);
       if (

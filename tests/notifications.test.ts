@@ -10,7 +10,7 @@ import { notificationFingerprint } from "@/lib/notifications/fingerprint";
 import type { SuspensionRecord } from "@/types";
 
 let directory = "";
-const savedEnvironment = { data: process.env.CLASSSTATUS_DATA_DIR, driver: process.env.CLASSSTATUS_STORAGE_DRIVER, namespace: process.env.CLASSSTATUS_SUPABASE_NAMESPACE };
+const savedEnvironment = { data: process.env.CLASSSTATUS_DATA_DIR, driver: process.env.CLASSSTATUS_STORAGE_DRIVER, namespace: process.env.CLASSSTATUS_LOCAL_NAMESPACE };
 const ecdh = createECDH("prime256v1");
 ecdh.generateKeys();
 const pushKeys = { p256dh: ecdh.getPublicKey().toString("base64url"), auth: Buffer.alloc(16, 9).toString("base64url") };
@@ -32,12 +32,12 @@ function document() { const file = path.join(directory, "push_notifications.json
 describe("durable publication push notifications", () => {
   beforeEach(() => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), "classstatus-push-"));
-    process.env.CLASSSTATUS_DATA_DIR = directory; process.env.CLASSSTATUS_STORAGE_DRIVER = "local-json"; process.env.CLASSSTATUS_SUPABASE_NAMESPACE = "preview";
+    process.env.CLASSSTATUS_DATA_DIR = directory; process.env.CLASSSTATUS_STORAGE_DRIVER = "local-json"; process.env.CLASSSTATUS_LOCAL_NAMESPACE = "preview";
     vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-07T12:00:00Z"));
   });
   afterEach(() => {
     vi.useRealTimers(); fs.rmSync(directory, { recursive: true, force: true });
-    for (const [key, value] of Object.entries(savedEnvironment)) { const name = key === "data" ? "CLASSSTATUS_DATA_DIR" : key === "driver" ? "CLASSSTATUS_STORAGE_DRIVER" : "CLASSSTATUS_SUPABASE_NAMESPACE"; if (value === undefined) delete process.env[name]; else process.env[name] = value; }
+    for (const [key, value] of Object.entries(savedEnvironment)) { const name = key === "data" ? "CLASSSTATUS_DATA_DIR" : key === "driver" ? "CLASSSTATUS_STORAGE_DRIVER" : "CLASSSTATUS_LOCAL_NAMESPACE"; if (value === undefined) delete process.env[name]; else process.env[name] = value; }
   });
 
   it("creates one durable event for a new safe publication and survives reload semantics", async () => {

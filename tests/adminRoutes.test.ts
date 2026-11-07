@@ -42,9 +42,5 @@ describe("admin route boundaries", () => {
     expect((await checkLoginThrottle("admin")).allowed).toBe(false);
     expect((await checkLoginThrottle("unknown")).allowed).toBe(true);
   });
-  it("returns unavailable instead of falling back to local JSON on Vercel production", async () => {
-    process.env.VERCEL = "1"; process.env.VERCEL_ENV = "production";
-    try { expect((await getLogs()).status).toBe(503); }
-    finally { delete process.env.VERCEL; delete process.env.VERCEL_ENV; }
-  });
+  
 });

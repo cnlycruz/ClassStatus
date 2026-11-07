@@ -27,7 +27,7 @@ describe("anonymous notification attack paths", () => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), "classstatus-push-security-"));
     vi.stubEnv("CLASSSTATUS_DATA_DIR", directory);
     vi.stubEnv("CLASSSTATUS_STORAGE_DRIVER", "local-json");
-    vi.stubEnv("CLASSSTATUS_SUPABASE_NAMESPACE", "preview");
+    vi.stubEnv("CLASSSTATUS_LOCAL_NAMESPACE", "preview");
     vi.stubEnv("CLASSSTATUS_PUBLIC_ORIGIN", origin);
     vi.stubEnv("CLASSSTATUS_VAPID_PUBLIC_KEY", "mock-public-key");
     vi.stubEnv("CLASSSTATUS_VAPID_PRIVATE_KEY", "mock-private-key");

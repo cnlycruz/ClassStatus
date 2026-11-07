@@ -1,61 +1,26 @@
-import fs from "fs";
-import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
+import { getStorageDriver, getDeploymentNamespace } from "@/lib/storage/driver";
 
-const managedNames = [
-  "VERCEL",
-  "VERCEL_ENV",
-  "CLASSSTATUS_STORAGE_DRIVER",
-  "CLASSSTATUS_SUPABASE_NAMESPACE",
-] as const;
-const original = Object.fromEntries(managedNames.map((name) => [name, process.env[name]]));
-
+const originalDriver = process.env.CLASSSTATUS_STORAGE_DRIVER;
+const originalNamespace = process.env.CLASSSTATUS_LOCAL_NAMESPACE;
 afterEach(() => {
-  for (const name of managedNames) {
-    const value = original[name];
-    if (value === undefined) delete process.env[name];
-    else process.env[name] = value;
-  }
+  if (originalDriver === undefined) delete process.env.CLASSSTATUS_STORAGE_DRIVER;
+  else process.env.CLASSSTATUS_STORAGE_DRIVER = originalDriver;
+  if (originalNamespace === undefined) delete process.env.CLASSSTATUS_LOCAL_NAMESPACE;
+  else process.env.CLASSSTATUS_LOCAL_NAMESPACE = originalNamespace;
 });
 
-describe("storage driver and namespace isolation", () => {
-  it("defaults to local JSON only outside Vercel", () => {
-    delete process.env.VERCEL;
-    delete process.env.VERCEL_ENV;
+describe("local-only storage configuration", () => {
+  it("uses local JSON by default", () => {
     delete process.env.CLASSSTATUS_STORAGE_DRIVER;
     expect(getStorageDriver()).toBe("local-json");
   });
-
-  it.each(["preview", "production"])("rejects local JSON in Vercel %s", (environment) => {
-    process.env.VERCEL = "1";
-    process.env.VERCEL_ENV = environment;
-    process.env.CLASSSTATUS_STORAGE_DRIVER = "local-json";
+  it("refuses stale hosted settings", () => {
+    process.env.CLASSSTATUS_STORAGE_DRIVER = "supabase";
     expect(() => getStorageDriver()).toThrow("ADMIN_STORAGE_UNAVAILABLE");
   });
-
-  it("derives Preview exclusively from trusted VERCEL_ENV", () => {
-    process.env.VERCEL = "1";
-    process.env.VERCEL_ENV = "preview";
-    process.env.CLASSSTATUS_STORAGE_DRIVER = "supabase";
-    process.env.CLASSSTATUS_SUPABASE_NAMESPACE = "production";
-    expect(getStorageDriver()).toBe("supabase");
+  it("uses a stable local partition by default", () => {
+    delete process.env.CLASSSTATUS_LOCAL_NAMESPACE;
     expect(getDeploymentNamespace()).toBe("preview");
-  });
-
-  it("derives Production exclusively from trusted VERCEL_ENV", () => {
-    process.env.VERCEL = "1";
-    process.env.VERCEL_ENV = "production";
-    process.env.CLASSSTATUS_STORAGE_DRIVER = "supabase";
-    process.env.CLASSSTATUS_SUPABASE_NAMESPACE = "preview";
-    expect(getStorageDriver()).toBe("supabase");
-    expect(getDeploymentNamespace()).toBe("production");
-  });
-
-  it("keeps the committed environment template free of browser-exposed Supabase variables", () => {
-    const template = fs.readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
-    expect(template).not.toMatch(/NEXT_PUBLIC_SUPABASE/);
-    expect(template).not.toContain("SUPABASE_SECRET_KEY=");
-    expect(template).toContain("SUPABASE_PUBLISHABLE_KEY=");
   });
 });

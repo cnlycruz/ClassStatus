@@ -1,29 +1,18 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { getPublicOrigin } from "@/lib/admin/config";
 
-const original = { ...process.env };
-
+const originalOrigin = process.env.CLASSSTATUS_PUBLIC_ORIGIN;
 afterEach(() => {
-  process.env = { ...original };
-  vi.resetModules();
+  if (originalOrigin === undefined) delete process.env.CLASSSTATUS_PUBLIC_ORIGIN;
+  else process.env.CLASSSTATUS_PUBLIC_ORIGIN = originalOrigin;
 });
 
-describe("hosted public origin", () => {
-  it("prefers the configured stable Preview alias over the generated deployment URL", async () => {
-    process.env.VERCEL = "1";
-    process.env.VERCEL_ENV = "preview";
-    process.env.VERCEL_URL = "generated-random.vercel.app";
-    process.env.CLASSSTATUS_PUBLIC_ORIGIN = "https://class-status-preview.vercel.app";
-    const { getPublicOrigin } = await import("@/lib/admin/config");
-    expect(getPublicOrigin()).toBe("https://class-status-preview.vercel.app");
+describe("local public origin", () => {
+  it("uses the explicitly configured localhost origin", () => {
+    process.env.CLASSSTATUS_PUBLIC_ORIGIN = "http://localhost:3000";
+    expect(getPublicOrigin()).toBe("http://localhost:3000");
   });
-
-  it("requires the configured stable Production origin", async () => {
-    process.env.VERCEL = "1";
-    process.env.VERCEL_ENV = "production";
-    process.env.VERCEL_URL = "generated-random.vercel.app";
-    process.env.CLASSSTATUS_PUBLIC_ORIGIN = "https://class-status.vercel.app";
-    const { getPublicOrigin } = await import("@/lib/admin/config");
-    expect(getPublicOrigin()).toBe("https://class-status.vercel.app");
+  it("does not guess a hosting provider origin", () => {
     delete process.env.CLASSSTATUS_PUBLIC_ORIGIN;
     expect(() => getPublicOrigin()).toThrow("ADMIN_AUTH_UNAVAILABLE");
   });

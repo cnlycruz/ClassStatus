@@ -13,7 +13,7 @@ import { createManualBroadcast, createNotificationEvent, deactivatePushSubscript
 import type { LGUId, SuspensionRecord } from "@/types";
 
 let directory = "";
-const environment = { data: process.env.CLASSSTATUS_DATA_DIR, driver: process.env.CLASSSTATUS_STORAGE_DRIVER, namespace: process.env.CLASSSTATUS_SUPABASE_NAMESPACE };
+const environment = { data: process.env.CLASSSTATUS_DATA_DIR, driver: process.env.CLASSSTATUS_STORAGE_DRIVER, namespace: process.env.CLASSSTATUS_LOCAL_NAMESPACE };
 const requestKey = "11111111-1111-4111-8111-111111111111";
 const ecdh = createECDH("prime256v1");
 ecdh.generateKeys();
@@ -24,8 +24,8 @@ function document() { return JSON.parse(fs.readFileSync(path.join(directory, "pu
 function automaticRecord(): SuspensionRecord { return { id: "automatic", lguId: "caloocan", status: "classes-suspended", affectedLevels: ["all-levels"], schoolSector: "all", effectiveDate: "2026-09-08", isAllDay: true, reason: "Rain", announcementSummary: "Suspended", source: { id: "gma-news-walang-pasok", name: "GMA", organization: "GMA", url: "https://example.test", type: "news-reputable", reliabilityTier: 3, verified: false, publishedAt: "2026-09-07T00:00:00Z" }, confidence: "medium", discoveredAt: "2026-09-07T00:00:00Z", publishedAt: "2026-09-07T00:00:00Z", lifecycleState: "upcoming", isUpcoming: true, isActive: false, isExpired: false, collectorProvenance: { pipeline: "tier3-media", runId: "run", collectedAt: "2026-09-07T00:00:00Z" }, publicationProvenance: { type: "automatic-collector", publicLabel: "Published from approved Tier 3 media evidence" } }; }
 
 describe("protected manual custom notifications", () => {
-  beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), "classstatus-manual-push-")); process.env.CLASSSTATUS_DATA_DIR = directory; process.env.CLASSSTATUS_STORAGE_DRIVER = "local-json"; process.env.CLASSSTATUS_SUPABASE_NAMESPACE = "preview"; process.env.CLASSSTATUS_ADMIN_USERNAME = "admin"; process.env.CLASSSTATUS_ADMIN_PASSWORD_HASH = "$argon2id$v=19$m=8192,t=1,p=1$YQ$YQ"; process.env.CLASSSTATUS_SESSION_SECRET = Buffer.alloc(32, 7).toString("base64"); process.env.CLASSSTATUS_PUBLIC_ORIGIN = "http://localhost:3000"; vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-07T12:00:00Z")); });
-  afterEach(() => { vi.useRealTimers(); fs.rmSync(directory, { recursive: true, force: true }); for (const [key, value] of Object.entries(environment)) { const name = key === "data" ? "CLASSSTATUS_DATA_DIR" : key === "driver" ? "CLASSSTATUS_STORAGE_DRIVER" : "CLASSSTATUS_SUPABASE_NAMESPACE"; if (value === undefined) delete process.env[name]; else process.env[name] = value; } });
+  beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), "classstatus-manual-push-")); process.env.CLASSSTATUS_DATA_DIR = directory; process.env.CLASSSTATUS_STORAGE_DRIVER = "local-json"; process.env.CLASSSTATUS_LOCAL_NAMESPACE = "preview"; process.env.CLASSSTATUS_ADMIN_USERNAME = "admin"; process.env.CLASSSTATUS_ADMIN_PASSWORD_HASH = "$argon2id$v=19$m=8192,t=1,p=1$YQ$YQ"; process.env.CLASSSTATUS_SESSION_SECRET = Buffer.alloc(32, 7).toString("base64"); process.env.CLASSSTATUS_PUBLIC_ORIGIN = "http://localhost:3000"; vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-07T12:00:00Z")); });
+  afterEach(() => { vi.useRealTimers(); fs.rmSync(directory, { recursive: true, force: true }); for (const [key, value] of Object.entries(environment)) { const name = key === "data" ? "CLASSSTATUS_DATA_DIR" : key === "driver" ? "CLASSSTATUS_STORAGE_DRIVER" : "CLASSSTATUS_LOCAL_NAMESPACE"; if (value === undefined) delete process.env[name]; else process.env[name] = value; } });
 
   it("keeps the route admin-only", async () => {
     const request = new NextRequest("http://localhost:3000/api/admin/notifications", { method: "POST", headers: { origin: "http://localhost:3000", "sec-fetch-site": "same-origin", "content-type": "application/json" }, body: JSON.stringify(input()) });
@@ -131,15 +131,5 @@ describe("protected manual custom notifications", () => {
     expect(JSON.parse(fs.readFileSync(path.join(directory, "push_notifications.json"), "utf8")).subscriptions).toHaveLength(1);
   });
 
-  it("projects manual fields from the private Supabase pending-delivery RPC", () => {
-    const migration = fs.readFileSync(path.join(process.cwd(), "supabase", "migrations", "20260905110000_add_manual_notification_pending_event_fields.sql"), "utf8");
-    expect(migration).toContain("create or replace function classstatus_private.notification_store");
-    expect(migration).toContain("'title', event.title");
-    expect(migration).toContain("'message', event.message");
-    expect(migration).toContain("'recipientMode', event.recipient_mode");
-    expect(migration).toContain("'targetLguIds', event.target_lgu_ids");
-    expect(migration).toContain("'recipientCount', event.recipient_count");
-    expect(migration).toContain("'manualRequestKey', event.request_key");
-    expect(migration).not.toContain("create function public.");
-  });
+  
 });

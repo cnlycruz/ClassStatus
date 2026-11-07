@@ -10,8 +10,6 @@ import type { SuspensionRecord } from "@/types";
 const originalEnvironment = {
   dataDirectory: process.env.CLASSSTATUS_DATA_DIR,
   storageDriver: process.env.CLASSSTATUS_STORAGE_DRIVER,
-  vercel: process.env.VERCEL,
-  vercelEnvironment: process.env.VERCEL_ENV,
 };
 
 let testDataDirectory: string;
@@ -96,8 +94,6 @@ function restoreEnvironment() {
   for (const [name, value] of [
     ["CLASSSTATUS_DATA_DIR", originalEnvironment.dataDirectory],
     ["CLASSSTATUS_STORAGE_DRIVER", originalEnvironment.storageDriver],
-    ["VERCEL", originalEnvironment.vercel],
-    ["VERCEL_ENV", originalEnvironment.vercelEnvironment],
   ] as const) {
     if (value === undefined) delete process.env[name];
     else process.env[name] = value;
@@ -109,8 +105,6 @@ describe("approved public suspension read boundary", () => {
     testDataDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "classstatus-public-read-"));
     process.env.CLASSSTATUS_DATA_DIR = testDataDirectory;
     process.env.CLASSSTATUS_STORAGE_DRIVER = "local-json";
-    delete process.env.VERCEL;
-    delete process.env.VERCEL_ENV;
   });
 
   afterEach(() => {

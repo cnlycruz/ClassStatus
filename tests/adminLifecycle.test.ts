@@ -10,7 +10,6 @@ const sessionId = "test-session";
 function draft() { return { targetType: "lgu", targetId: "pasig", sector: "all", affectedLevels: ["all-levels"], effectiveDate: getManilaDateString(), reason: { preset: "flooding" }, duration: { preset: "whole-day", isAllDay: true }, evidence: { preset: "lgu-official-announcement" }, proofUrl: "https://pasigcity.gov.ph/proof" }; }
 
 beforeEach(() => {
-  delete process.env.VERCEL; delete process.env.VERCEL_ENV;
   process.env.CLASSSTATUS_SESSION_SECRET = Buffer.alloc(32, 9).toString("base64"); process.env.CLASSSTATUS_ADMIN_USERNAME = "admin"; process.env.CLASSSTATUS_ADMIN_PASSWORD_HASH = "$argon2id$v=19$m=8192,t=1,p=1$YQ$YQ"; process.env.CLASSSTATUS_PUBLIC_ORIGIN = "http://localhost:3000"; process.env.CLASSSTATUS_STORAGE_DRIVER = "local-json";
   localStateStore.mutateState((state) => { state.records = []; state.audit = []; state.confirmations = []; state.idempotency = []; });
 });
@@ -55,10 +54,5 @@ describe("manual publication and durable removal lifecycle", () => {
     }, sessionId)).rejects.toThrow("confirmation-invalid");
     expect(() => requestRemoval("bad\u0000record", 1, randomUUID(), sessionId)).toThrow("record-id-invalid");
   });
-  it("fails closed when local JSON is selected in every Vercel environment", async () => {
-    const previousVercel = process.env.VERCEL; const previousEnvironment = process.env.VERCEL_ENV;
-    process.env.VERCEL = "1"; process.env.VERCEL_ENV = "preview";
-    try { await expect(suspensionStore.readState()).rejects.toThrow("ADMIN_STORAGE_UNAVAILABLE"); }
-    finally { if (previousVercel === undefined) delete process.env.VERCEL; else process.env.VERCEL = previousVercel; if (previousEnvironment === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = previousEnvironment; }
-  });
+  
 });

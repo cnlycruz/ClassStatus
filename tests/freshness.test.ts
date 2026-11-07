@@ -12,8 +12,6 @@ import { DELAYED_AFTER_MS, EXPECTED_COLLECTOR_INTERVAL_MS, formatFreshness, getF
 const originalEnvironment = {
   dataDirectory: process.env.CLASSSTATUS_DATA_DIR,
   storageDriver: process.env.CLASSSTATUS_STORAGE_DRIVER,
-  vercel: process.env.VERCEL,
-  vercelEnvironment: process.env.VERCEL_ENV,
 };
 
 let testDirectory: string;
@@ -54,8 +52,6 @@ function restoreEnvironment() {
   for (const [name, value] of [
     ["CLASSSTATUS_DATA_DIR", originalEnvironment.dataDirectory],
     ["CLASSSTATUS_STORAGE_DRIVER", originalEnvironment.storageDriver],
-    ["VERCEL", originalEnvironment.vercel],
-    ["VERCEL_ENV", originalEnvironment.vercelEnvironment],
   ] as const) {
     if (value === undefined) delete process.env[name];
     else process.env[name] = value;
@@ -69,8 +65,6 @@ describe("public collector freshness", () => {
     testDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "classstatus-freshness-"));
     process.env.CLASSSTATUS_DATA_DIR = testDirectory;
     process.env.CLASSSTATUS_STORAGE_DRIVER = "local-json";
-    delete process.env.VERCEL;
-    delete process.env.VERCEL_ENV;
   });
 
   afterEach(() => {

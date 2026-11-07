@@ -5,7 +5,6 @@ import { createECDH } from "node:crypto";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/alerts/subscribe/route";
-import { pushRegistrationIdentityHash } from "@/lib/notifications/registrationSecurity";
 
 const origin = "http://localhost:3000";
 const ecdh = createECDH("prime256v1");
@@ -37,7 +36,7 @@ describe("anonymous push registration security", () => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), "classstatus-push-registration-"));
     vi.stubEnv("CLASSSTATUS_DATA_DIR", directory);
     vi.stubEnv("CLASSSTATUS_STORAGE_DRIVER", "local-json");
-    vi.stubEnv("CLASSSTATUS_SUPABASE_NAMESPACE", "preview");
+    vi.stubEnv("CLASSSTATUS_LOCAL_NAMESPACE", "preview");
     vi.stubEnv("CLASSSTATUS_PUBLIC_ORIGIN", origin);
   });
 
@@ -98,14 +97,5 @@ describe("anonymous push registration security", () => {
     expect((await POST(request(body("duplicate-retry")))).status).toBe(429);
   });
 
-  it("uses only Vercel's platform client-IP header in hosted storage", () => {
-    vi.stubEnv("VERCEL", "1");
-    vi.stubEnv("VERCEL_ENV", "production");
-    vi.stubEnv("CLASSSTATUS_STORAGE_DRIVER", "supabase");
-    vi.stubEnv("CLASSSTATUS_SECURITY_PEPPER", Buffer.alloc(32, 3).toString("base64"));
-    const first = request(body(), { "x-vercel-forwarded-for": "2001:db8::1", "x-forwarded-for": "198.51.100.5" });
-    const equivalent = request(body(), { "x-vercel-forwarded-for": "2001:0db8:0:0:0:0:0:1", "x-forwarded-for": "203.0.113.9" });
-    expect(pushRegistrationIdentityHash(first)).toBe(pushRegistrationIdentityHash(equivalent));
-    expect(() => pushRegistrationIdentityHash(request(body(), { "x-forwarded-for": "198.51.100.5" }))).toThrow("identity-unavailable");
-  });
+  
 });

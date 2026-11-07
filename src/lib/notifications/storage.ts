@@ -5,8 +5,7 @@ import lockfile from "proper-lockfile";
 import type { LGUId, SuspensionRecord } from "@/types";
 import { ALL_LGU_IDS } from "@/data/lgus";
 import type { DeploymentNamespace } from "@/lib/storage";
-import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
-import { manualNotificationStoreRpc, notificationStoreRpc, registerPushSubscriptionRpc } from "./supabaseRpc";
+import { getDeploymentNamespace } from "@/lib/storage/driver";
 import { notificationFamilyFingerprint, notificationFingerprint } from "./fingerprint";
 import { PUSH_REGISTRATION_RATE_POLICY, PushRegistrationRateLimitError } from "./registrationSecurity";
 import { validatePushSubscription } from "./subscriptionValidation";
@@ -62,10 +61,7 @@ async function mutateLocal<T>(operation: (state: LocalNotificationDocument) => T
   } finally { await release(); }
 }
 
-function namespace(): DeploymentNamespace {
-  if (getStorageDriver() === "local-json") return process.env.CLASSSTATUS_SUPABASE_NAMESPACE === "production" ? "production" : "preview";
-  return getDeploymentNamespace();
-}
+function namespace(): DeploymentNamespace { return getDeploymentNamespace(); }
 
 function cleanLguIds(ids: LGUId[]): LGUId[] {
   const values = [...new Set(ids)].filter((id): id is LGUId => lguSet.has(id));
@@ -80,7 +76,7 @@ export async function savePushSubscription(input: { endpoint: string; p256dh: st
   const value = { ...input, lguIds: cleanLguIds(input.lguIds) };
   const deploymentNamespace = namespace();
   const now = new Date().toISOString();
-  if (getStorageDriver() === "local-json") return mutateLocal((state) => {
+  return mutateLocal((state) => {
     const prior = state.subscriptions.find((subscription) => subscription.deploymentNamespace === deploymentNamespace && subscription.endpoint === value.endpoint);
     if (prior) {
       Object.assign(prior, value, { active: true, updatedAt: now });
@@ -90,8 +86,6 @@ export async function savePushSubscription(input: { endpoint: string; p256dh: st
     state.subscriptions.push(created);
     return { ...created };
   });
-  const data = await notificationStoreRpc<{ id: string; createdAt: string; updatedAt: string }>("save-subscription", { endpoint: value.endpoint, p256dh: value.p256dh, auth: value.auth, lguIds: value.lguIds, now });
-  return { id: data.id, deploymentNamespace, ...value, active: true, createdAt: data.createdAt, updatedAt: data.updatedAt };
 }
 
 function consumeLocalRegistrationLimit(
@@ -141,7 +135,7 @@ export async function registerPushSubscription(
   const value = { ...input, lguIds: cleanLguIds(input.lguIds) };
   const deploymentNamespace = namespace();
 
-  if (getStorageDriver() === "local-json") return mutateLocal((state) => {
+  return mutateLocal((state) => {
     const prior = state.subscriptions.find((subscription) => subscription.deploymentNamespace === deploymentNamespace && subscription.endpoint === value.endpoint);
     const now = new Date();
     const retryAfter = consumeLocalRegistrationLimit(state, identityHash, !prior, now);
@@ -154,38 +148,25 @@ export async function registerPushSubscription(
     state.subscriptions.push(created);
     return { ...created };
   });
-
-  const data = await registerPushSubscriptionRpc<{ rateLimited: boolean; retryAfter?: number; id?: string; createdAt?: string; updatedAt?: string }>({
-    endpoint: value.endpoint,
-    p256dh: value.p256dh,
-    auth: value.auth,
-    lguIds: value.lguIds,
-    identityHash,
-  });
-  if (data.rateLimited) throw new PushRegistrationRateLimitError(Math.max(1, Math.ceil(data.retryAfter || 1)));
-  if (!data.id || !data.createdAt || !data.updatedAt) throw new Error("notification-storage-unavailable");
-  return { id: data.id, deploymentNamespace, ...value, active: true, createdAt: data.createdAt, updatedAt: data.updatedAt };
 }
 
 export async function updatePushPreferences(id: string, lguIds: LGUId[]): Promise<boolean> {
   const values = cleanLguIds(lguIds); const deploymentNamespace = namespace(); const now = new Date().toISOString();
-  if (getStorageDriver() === "local-json") return mutateLocal((state) => {
+  return mutateLocal((state) => {
     const subscription = state.subscriptions.find((item) => item.id === id && item.deploymentNamespace === deploymentNamespace && item.active);
     if (!subscription) return false;
     subscription.lguIds = values; subscription.updatedAt = now; return true;
   });
-  return notificationStoreRpc<boolean>("update-preferences", { id, lguIds: values, now });
 }
 
 export async function deactivatePushSubscription(id: string): Promise<void> {
   const deploymentNamespace = namespace(); const now = new Date().toISOString();
-  if (getStorageDriver() === "local-json") { await mutateLocal((state) => { const item = state.subscriptions.find((subscription) => subscription.id === id && subscription.deploymentNamespace === deploymentNamespace); if (item) { item.active = false; item.updatedAt = now; } }); return; }
-  await notificationStoreRpc("deactivate-subscription", { id, now });
+   await mutateLocal((state) => { const item = state.subscriptions.find((subscription) => subscription.id === id && subscription.deploymentNamespace === deploymentNamespace); if (item) { item.active = false; item.updatedAt = now; } }); return;
 }
 
 export async function createNotificationEvent(record: SuspensionRecord): Promise<{ event: NotificationEvent; created: boolean }> {
   const deploymentNamespace = namespace(); const fingerprint = notificationFingerprint(deploymentNamespace, record); const familyFingerprint = notificationFamilyFingerprint(deploymentNamespace, record); const now = new Date().toISOString();
-  if (getStorageDriver() === "local-json") return mutateLocal((state) => {
+  return mutateLocal((state) => {
     const prior = state.events.find((event) => event.deploymentNamespace === deploymentNamespace && event.fingerprint === fingerprint);
     if (prior) return { event: { ...prior }, created: false };
     const kind: NotificationEventKind = state.events.some((event) => event.deploymentNamespace === deploymentNamespace && event.familyFingerprint === familyFingerprint) ? "update" : "initial";
@@ -196,12 +177,10 @@ export async function createNotificationEvent(record: SuspensionRecord): Promise
     }
     return { event, created: true };
   });
-  const data = await notificationStoreRpc<{ id: string; kind: NotificationEventKind; createdAt: string; created: boolean }>("create-event", { fingerprint, familyFingerprint, record, now });
-  return { event: { id: data.id, deploymentNamespace, fingerprint, familyFingerprint, kind: data.kind, record, createdAt: data.createdAt }, created: data.created };
 }
 
 export async function listPendingPushDeliveries(now = new Date(), limit = 100): Promise<PendingPushDelivery[]> {
-  if (getStorageDriver() === "local-json") {
+  
     const deploymentNamespace = namespace();
     const state = readLocal(); const events = new Map(state.events.map((event) => [event.id, event])); const subscriptions = new Map(state.subscriptions.map((subscription) => [subscription.id, subscription]));
     return state.deliveries.filter((delivery) => (delivery.state === "pending" || delivery.state === "failed") && Date.parse(delivery.nextAttemptAt) <= now.getTime()).flatMap((delivery) => {
@@ -209,20 +188,16 @@ export async function listPendingPushDeliveries(now = new Date(), limit = 100): 
       return event?.deploymentNamespace === deploymentNamespace && subscription?.deploymentNamespace === deploymentNamespace && subscription.active
         ? [{ delivery: { ...delivery }, event: { ...event }, subscription: { ...subscription } }] : [];
     }).slice(0, Math.max(1, Math.min(limit, 100)));
-  }
-  return notificationStoreRpc<PendingPushDelivery[]>("list-pending", { now: now.toISOString(), limit });
 }
 
 export async function recordPushDelivery(id: string, update: Pick<NotificationDelivery, "state" | "attempts" | "nextAttemptAt"> & Partial<Pick<NotificationDelivery, "lastAttemptAt" | "deliveredAt" | "lastErrorCode">>): Promise<void> {
-  if (getStorageDriver() === "local-json") {
+  
     const deploymentNamespace = namespace();
     await mutateLocal((state) => {
       const delivery = state.deliveries.find((item) => item.id === id);
       if (delivery && state.events.some((event) => event.id === delivery.eventId && event.deploymentNamespace === deploymentNamespace)
         && state.subscriptions.some((subscription) => subscription.id === delivery.subscriptionId && subscription.deploymentNamespace === deploymentNamespace)) Object.assign(delivery, update);
     }); return;
-  }
-  await notificationStoreRpc("record-delivery", { id, update });
 }
 
 export async function invalidatePushSubscription(id: string): Promise<void> { await deactivatePushSubscription(id); }
@@ -245,13 +220,12 @@ function cleanManualInput(input: ManualBroadcastInput): Required<Omit<ManualBroa
 
 export async function previewManualBroadcast(input: ManualBroadcastInput): Promise<number> {
   const value = cleanManualInput(input); const deploymentNamespace = namespace();
-  if (getStorageDriver() === "local-json") return readLocal().subscriptions.filter((subscription) => subscription.deploymentNamespace === deploymentNamespace && subscription.active && (value.recipientMode === "all" || subscription.lguIds.some((id) => value.targetLguIds.includes(id)))).length;
-  return manualNotificationStoreRpc<number>("preview-manual", value);
+  return readLocal().subscriptions.filter((subscription) => subscription.deploymentNamespace === deploymentNamespace && subscription.active && (value.recipientMode === "all" || subscription.lguIds.some((id) => value.targetLguIds.includes(id)))).length;
 }
 
 export async function createManualBroadcast(input: ManualBroadcastInput): Promise<{ event: NotificationEvent; created: boolean; recipientCount: number }> {
   const value = cleanManualInput(input); const deploymentNamespace = namespace(); const now = new Date().toISOString();
-  if (getStorageDriver() === "local-json") return mutateLocal((state) => {
+  return mutateLocal((state) => {
     const prior = state.events.find((event) => event.deploymentNamespace === deploymentNamespace && event.kind === "manual" && event.manualRequestKey === value.requestKey);
     if (prior) return { event: { ...prior }, created: false, recipientCount: prior.recipientCount || 0 };
     const recipients = state.subscriptions.filter((subscription) => subscription.deploymentNamespace === deploymentNamespace && subscription.active && (value.recipientMode === "all" || subscription.lguIds.some((id) => value.targetLguIds.includes(id))));
@@ -260,26 +234,23 @@ export async function createManualBroadcast(input: ManualBroadcastInput): Promis
     for (const subscription of recipients) state.deliveries.push({ id: randomUUID(), eventId: event.id, subscriptionId: subscription.id, state: "pending", attempts: 0, nextAttemptAt: now });
     return { event, created: true, recipientCount: recipients.length };
   });
-  return manualNotificationStoreRpc("create-manual", { ...value, now });
 }
 
 export async function listManualBroadcastHistory(limit = 10): Promise<ManualBroadcastHistoryEntry[]> {
   const deploymentNamespace = namespace();
-  if (getStorageDriver() === "local-json") {
+  
     const state = readLocal();
     return state.events.filter((event) => event.deploymentNamespace === deploymentNamespace && event.kind === "manual" && !event.historyDeletedAt).sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)).slice(0, Math.max(1, Math.min(limit, 20))).map((event) => {
       const deliveries = state.deliveries.filter((delivery) => delivery.eventId === event.id);
       return { id: event.id, title: event.title || "Class Status Announcement", message: event.message || "", recipientMode: event.recipientMode || "all", targetLguIds: event.targetLguIds || [], recipientCount: event.recipientCount || deliveries.length, createdAt: event.createdAt, deliveredCount: deliveries.filter((delivery) => delivery.state === "delivered").length, pendingCount: deliveries.filter((delivery) => delivery.state === "pending" || delivery.state === "failed").length, failedCount: deliveries.filter((delivery) => delivery.state === "failed").length };
     });
-  }
-  return manualNotificationStoreRpc<ManualBroadcastHistoryEntry[]>("list-manual-history", { limit: Math.max(1, Math.min(limit, 20)) });
 }
 
 export async function deleteManualBroadcastHistory(id: string): Promise<void> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw new Error("manual-notification-history-invalid");
   const deploymentNamespace = namespace();
   const now = new Date().toISOString();
-  if (getStorageDriver() === "local-json") {
+  
     const deleted = await mutateLocal((state) => {
       const event = state.events.find((item) => item.id === id && item.deploymentNamespace === deploymentNamespace && item.kind === "manual" && !item.historyDeletedAt);
       if (!event) return false;
@@ -288,7 +259,4 @@ export async function deleteManualBroadcastHistory(id: string): Promise<void> {
     });
     if (!deleted) throw new Error("manual-notification-history-not-found");
     return;
-  }
-  const result = await manualNotificationStoreRpc<{ deleted: boolean }>("delete-manual-history", { id, now });
-  if (!result.deleted) throw new Error("manual-notification-history-not-found");
 }

@@ -2,20 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import lockfile from "proper-lockfile";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { globalCollector } from "@/collector/engine";
-import { isCollectorWorkerExecution, withCollectorWorkerExecution } from "@/collector/executionContext";
-import {
-  createPublicSupabaseClient,
-  createUserSupabaseClient,
-} from "@/lib/supabase/server";
-import { createCollectorCapability } from "@/lib/cron/collectorCapability";
-import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
+import { getDeploymentNamespace } from "@/lib/storage/driver";
 import type { CollectorSummary } from "@/types";
 import type { DeploymentNamespace } from "@/lib/storage/contracts";
 
 export const COLLECTOR_LEASE_TTL_MS = 5 * 60 * 1000;
-export const PRODUCTION_COLLECTOR_LEASE_TTL_MS = 7 * 60 * 1000;
 
 export interface CollectorLease {
   acquire(namespace: DeploymentNamespace, ownerToken: string): Promise<boolean>;
@@ -72,9 +64,7 @@ const localCollectorLease: CollectorLease = {
   async acquire(namespace, ownerToken) {
     return mutateLocalLeases((leases) => {
       const now = Date.now();
-      const leaseTtlMs = namespace === "production"
-        ? PRODUCTION_COLLECTOR_LEASE_TTL_MS
-        : COLLECTOR_LEASE_TTL_MS;
+      const leaseTtlMs = COLLECTOR_LEASE_TTL_MS;
       const current = leases[namespace];
       if (current && current.ownerToken !== ownerToken && Date.parse(current.expiresAt) > now) return false;
       leases[namespace] = {
@@ -91,50 +81,6 @@ const localCollectorLease: CollectorLease = {
     });
   },
 };
-
-async function collectorLeaseClient(): Promise<SupabaseClient> {
-  if (isCollectorWorkerExecution()) {
-    return createPublicSupabaseClient();
-  }
-  return createUserSupabaseClient();
-}
-
-const supabaseCollectorLease: CollectorLease = {
-  async acquire(namespace, ownerToken) {
-    const client = await collectorLeaseClient();
-    const scheduled = isCollectorWorkerExecution();
-    const operation = scheduled
-      ? `classstatus_${namespace}_worker_acquire_collector_lease`
-      : `classstatus_${namespace}_acquire_collector_lease`;
-    const args = scheduled
-      ? createCollectorCapability("lease.acquire", { ownerToken })
-      : { p_owner_token: ownerToken };
-    const { data, error } = await client.rpc(operation, args);
-    if (error) throw new Error("COLLECTOR_LEASE_UNAVAILABLE");
-    return data === true;
-  },
-  async release(namespace, ownerToken) {
-    const client = await collectorLeaseClient();
-    const scheduled = isCollectorWorkerExecution();
-    const operation = scheduled
-      ? `classstatus_${namespace}_worker_release_collector_lease`
-      : `classstatus_${namespace}_release_collector_lease`;
-    const args = scheduled
-      ? createCollectorCapability("lease.release", { ownerToken })
-      : { p_owner_token: ownerToken };
-    const { error } = await client.rpc(operation, args);
-    if (error) throw new Error("COLLECTOR_LEASE_UNAVAILABLE");
-  },
-};
-
-function collectorNamespace(): DeploymentNamespace {
-  if (getStorageDriver() === "supabase") return getDeploymentNamespace();
-  return process.env.CLASSSTATUS_SUPABASE_NAMESPACE === "production" ? "production" : "preview";
-}
-
-function selectedCollectorLease(): CollectorLease {
-  return getStorageDriver() === "supabase" ? supabaseCollectorLease : localCollectorLease;
-}
 
 export async function executeCollectorWithLease(options: {
   namespace: DeploymentNamespace;
@@ -160,12 +106,8 @@ export async function executeCollectorWithLease(options: {
 
 export function runCollectorWithLease(): Promise<CollectorExecutionResult> {
   return executeCollectorWithLease({
-    namespace: collectorNamespace(),
-    lease: selectedCollectorLease(),
+    namespace: getDeploymentNamespace(),
+    lease: localCollectorLease,
     runSweep: () => globalCollector.runSweep(),
   });
-}
-
-export function runScheduledCollectorWithLease(): Promise<CollectorExecutionResult> {
-  return withCollectorWorkerExecution(() => runCollectorWithLease());
 }

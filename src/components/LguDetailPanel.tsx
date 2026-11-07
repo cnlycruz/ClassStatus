@@ -157,7 +157,7 @@ export function LguDetailPanel({ lgu, lastSuccessfulCheckAt, onClose }: LguDetai
       `🎓 Levels: ${record?.affectedLevels.join(", ") || "All Levels"}\n` +
       `📌 Reason: ${record?.reason || "Normal classes"}\n` +
       `🔗 Source: ${record?.source.name || "Official LGU Desk"} (${record?.source.url || ""})\n` +
-      `Checked at: https://classstatus.vercel.app`;
+      `Checked in local ClassStatus development preview (not a public advisory)`;
 
     if (navigator.clipboard) {
       await navigator.clipboard.writeText(shareMessage);

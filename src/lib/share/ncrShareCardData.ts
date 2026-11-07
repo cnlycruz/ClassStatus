@@ -50,7 +50,7 @@ export function prepareNcrShareCardData(
     effectiveDateLabel: formatManilaDateReadable(effectiveDate),
     asOfIso: projection.summary.updatedAt,
     asOfLabel: formatAsOf(now),
-    siteLabel: options.siteLabel || "classstatus.vercel.app",
+    siteLabel: options.siteLabel || "Class Status NCR — Local Preview",
     sourceNote: NCR_SHARE_SOURCE_NOTE,
     counts: {
       full: projection.summary.suspendedCount,

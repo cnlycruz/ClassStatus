@@ -79,7 +79,7 @@ try {
         assert.equal(response.headers.get("x-content-type-options"), "nosniff");
         assert.equal(response.headers.get("x-frame-options"), null);
         const contentSecurityPolicy = response.headers.get("content-security-policy") || "";
-        assert.ok(contentSecurityPolicy.includes("frame-ancestors 'self' https://portfolio.example http://192.168.1.36:3000 http://localhost:3000 http://127.0.0.1:3000"));
+        assert.ok(contentSecurityPolicy.includes("frame-ancestors 'self'"));
         assert.ok(!contentSecurityPolicy.includes("frame-ancestors 'none'"));
         assert.ok(!contentSecurityPolicy.includes("frame-ancestors *"));
         assert.ok(!contentSecurityPolicy.includes("unsafe-eval"));

@@ -1,27 +1,17 @@
 import type { NextRequest } from "next/server";
-import { getAdminConfig, getConfiguredAdminUserId, getPublicOrigin, getSecurityPepper } from "./config";
+import { getAdminConfig, getPublicOrigin } from "./config";
 import { getAdminSession } from "./auth";
 import { safeEqual } from "./crypto";
 import { securityStore } from "@/lib/storage";
-import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
-import { getSupabaseRuntimeConfig } from "@/lib/supabase/runtimeConfig";
 
 export class AdminHttpError extends Error {
   constructor(public status: number, public code: string) { super(code); }
 }
 
 function assertAdminRuntime(): void {
-  const driver = getStorageDriver();
   getPublicOrigin();
-  if (driver === "local-json") {
-    getAdminConfig();
-    securityStore.readSecurity();
-    return;
-  }
-  getDeploymentNamespace();
-  getSupabaseRuntimeConfig();
-  getConfiguredAdminUserId();
-  getSecurityPepper();
+  getAdminConfig();
+  securityStore.readSecurity();
 }
 
 export async function requireAdmin(): Promise<NonNullable<Awaited<ReturnType<typeof getAdminSession>>>> {

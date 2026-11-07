@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { suspensionStore } from "@/lib/storage";
-import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
+import { getDeploymentNamespace } from "@/lib/storage/driver";
 import { noticeEventKey } from "@/lib/suspensions/noticeModel";
 import { enqueuePublicationNotification } from "@/lib/notifications/dispatch";
 import { getSecurityPepper } from "./config";
@@ -12,12 +12,7 @@ import type { SuspensionRecord } from "@/types";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function payloadHash(value: unknown): string { return sha256(stableJson(value)); }
-function identityNamespace() {
-  if (getStorageDriver() === "local-json") {
-    return process.env.CLASSSTATUS_SUPABASE_NAMESPACE === "production" ? "production" : "preview";
-  }
-  return getDeploymentNamespace();
-}
+function identityNamespace() { return getDeploymentNamespace(); }
 export async function createPublicationPreview(input: unknown, sessionId: string) {
   const normalized = normalizeManualDraft(input);
   const hash = payloadHash(normalized);

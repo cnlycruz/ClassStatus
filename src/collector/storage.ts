@@ -1,7 +1,7 @@
 import { CollectorFreshness, CollectorLog, SuspensionRecord } from "@/types";
 import { isLiveTier3Record } from "./sourcePolicy";
 import { suspensionStore } from "@/lib/storage";
-import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
+import { getDeploymentNamespace } from "@/lib/storage/driver";
 import {
   COLLECTOR_PARSER_OUTCOME_V2,
   noticeEventKey,
@@ -22,12 +22,7 @@ export async function clearLiveSuspensions(): Promise<SuspensionRecord[]> {
   return [];
 }
 
-function identityNamespace() {
-  if (getStorageDriver() === "local-json") {
-    return process.env.CLASSSTATUS_SUPABASE_NAMESPACE === "production" ? "production" : "preview";
-  }
-  return getDeploymentNamespace();
-}
+function identityNamespace() { return getDeploymentNamespace(); }
 
 export type CollectedUpsertResult = {
   action: "created" | "updated" | "merged" | "unchanged" | "held";

@@ -1,18 +1,8 @@
 import argon2 from "argon2";
 import { cookies } from "next/headers";
-import {
-  adminCookieName,
-  getAdminConfig,
-  getConfiguredAdminUserId,
-  getSecurityPepper,
-} from "./config";
+import { adminCookieName, getAdminConfig, getPublicOrigin, getSecurityPepper } from "./config";
 import { hmac, randomToken, safeEqual, sha256 } from "./crypto";
 import { securityStore } from "@/lib/storage";
-import { getDeploymentNamespace, getStorageDriver } from "@/lib/storage/driver";
-import {
-  createUserSupabaseClient,
-  sessionIdFromAccessToken,
-} from "@/lib/supabase/server";
 import type { AdminSessionView, StoredSession } from "./types";
 
 const ABSOLUTE_MS = 8 * 60 * 60 * 1000;
@@ -23,7 +13,6 @@ const BACKOFF_MS = [30_000, 60_000, 120_000, 300_000, 900_000];
 
 function tokenDigest(token: string, secret: Buffer): string { return hmac(`session:${token}`, secret); }
 function localCsrfFor(session: StoredSession, secret: Buffer): string { return hmac(`csrf:${session.id}:${session.tokenDigest}`, secret); }
-function supabaseCsrfFor(sessionId: string): string { return hmac(`supabase-csrf:${sessionId}`, getSecurityPepper()); }
 function fingerprint(value: string, secret = getSecurityPepper()): string { return hmac(`fingerprint:${value.normalize("NFKC").trim().toLowerCase()}`, secret); }
 
 export function createLoginChallenge(): string {
@@ -41,13 +30,6 @@ export function verifyLoginChallenge(challenge: string): boolean {
 }
 
 export async function checkLoginThrottle(identifier: string): Promise<{ allowed: boolean; retryAfterSeconds?: number }> {
-  if (getStorageDriver() === "supabase") {
-    // Supabase Auth enforces the hosted, IP-based sign-in limit. A separate
-    // pre-auth database endpoint cannot authenticate that a failure came from
-    // this server and would create an avoidable denial-of-service primitive.
-    void identifier;
-    return { allowed: true };
-  }
   const config = getAdminConfig();
   const now = Date.now();
   return securityStore.mutateSecurity((state) => {
@@ -61,12 +43,6 @@ export async function checkLoginThrottle(identifier: string): Promise<{ allowed:
 }
 
 export async function recordLoginFailure(identifier: string): Promise<void> {
-  if (getStorageDriver() === "supabase") {
-    // Supabase Auth applies configurable IP-based sign-in throttling before it
-    // returns an authentication failure. Do not expose a separate anonymous
-    // database writer: it would let arbitrary callers manufacture lockouts.
-    return;
-  }
   const config = getAdminConfig();
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
@@ -103,7 +79,7 @@ async function issueLocalAdminSession(): Promise<AdminSessionView> {
   securityStore.mutateSecurity((state) => { state.activeSession = session; state.identifierBuckets = []; });
   try {
     const jar = await cookies();
-    jar.set(adminCookieName(), token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/", expires: new Date(session.absoluteExpiresAt) });
+    jar.set(adminCookieName(), token, { httpOnly: true, secure: getPublicOrigin().startsWith("https:"), sameSite: "strict", path: "/", expires: new Date(session.absoluteExpiresAt) });
   } catch (error) {
     securityStore.mutateSecurity((state) => { if (state.activeSession?.id === session.id) delete state.activeSession; });
     throw error;
@@ -111,70 +87,12 @@ async function issueLocalAdminSession(): Promise<AdminSessionView> {
   return { id: session.id, csrfToken: localCsrfFor(session, config.sessionSecret), absoluteExpiresAt: session.absoluteExpiresAt, idleExpiresAt: new Date(now.getTime() + IDLE_MS).toISOString() };
 }
 
-type SupabaseAdminContext = {
-  client: Awaited<ReturnType<typeof createUserSupabaseClient>>;
-  sessionId: string;
-};
-
-async function verifiedSupabaseAdminContext(
-  suppliedClient?: Awaited<ReturnType<typeof createUserSupabaseClient>>
-): Promise<SupabaseAdminContext> {
-  const client = suppliedClient || await createUserSupabaseClient();
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user || userData.user.id !== getConfiguredAdminUserId()) {
-    throw new Error("ADMIN_AUTH_UNAVAILABLE");
-  }
-  const { data: sessionData, error: sessionError } = await client.auth.getSession();
-  const accessToken = sessionData.session?.access_token;
-  if (sessionError || !accessToken) throw new Error("ADMIN_AUTH_UNAVAILABLE");
-  return {
-    client,
-    sessionId: sessionIdFromAccessToken(accessToken),
-  };
-}
-
-async function supabaseSessionPolicyRpc(
-  operation: "start_admin_session" | "touch_admin_session" | "revoke_admin_session",
-  args: Record<string, unknown> = {},
-  suppliedContext?: SupabaseAdminContext
-) {
-  const namespace = getDeploymentNamespace();
-  const context = suppliedContext || await verifiedSupabaseAdminContext();
-  const { data, error } = await context.client.rpc(`classstatus_${namespace}_${operation}`, args);
-  if (error) throw new Error("ADMIN_AUTH_UNAVAILABLE");
-  return { client: context.client, data };
-}
-
 export async function authenticateAndIssueAdminSession(identifier: string, password: string): Promise<AdminSessionView | null> {
-  if (getStorageDriver() === "local-json") {
-    if (!await verifyAdminCredentials(identifier, password)) return null;
-    return issueLocalAdminSession();
-  }
-  const client = await createUserSupabaseClient();
-  const { data, error } = await client.auth.signInWithPassword({ email: identifier, password });
-  if (error || !data.user || !data.session || data.user.id !== getConfiguredAdminUserId()) {
-    await client.auth.signOut({ scope: "local" }).catch(() => undefined);
-    return null;
-  }
-  const sessionId = sessionIdFromAccessToken(data.session.access_token);
-  const context = { client, sessionId };
-  const csrfToken = supabaseCsrfFor(sessionId);
-  try {
-    const result = await supabaseSessionPolicyRpc("start_admin_session", {
-      p_csrf_digest: sha256(csrfToken),
-      p_login_fingerprint: sha256(fingerprint(identifier)),
-    }, context);
-    const policy = result.data as { sessionId?: unknown; absoluteExpiresAt?: unknown; idleExpiresAt?: unknown } | null;
-    if (!policy || policy.sessionId !== sessionId || typeof policy.absoluteExpiresAt !== "string" || typeof policy.idleExpiresAt !== "string") throw new Error();
-    return { id: sessionId, csrfToken, absoluteExpiresAt: policy.absoluteExpiresAt, idleExpiresAt: policy.idleExpiresAt };
-  } catch (error) {
-    await client.auth.signOut({ scope: "local" }).catch(() => undefined);
-    throw error;
-  }
+  if (!await verifyAdminCredentials(identifier, password)) return null;
+  return issueLocalAdminSession();
 }
 
 export async function issueAdminSession(): Promise<AdminSessionView> {
-  if (getStorageDriver() !== "local-json") throw new Error("ADMIN_AUTH_UNAVAILABLE");
   return issueLocalAdminSession();
 }
 
@@ -199,20 +117,7 @@ async function getLocalAdminSession(options: { touch?: boolean }): Promise<Admin
 }
 
 export async function getAdminSession(options: { touch?: boolean } = {}): Promise<AdminSessionView | null> {
-  let driver; try { driver = getStorageDriver(); } catch { return null; }
-  if (driver === "local-json") return getLocalAdminSession(options);
-  try {
-    const context = await verifiedSupabaseAdminContext();
-    const result = await supabaseSessionPolicyRpc(
-      "touch_admin_session",
-      { p_touch: options.touch !== false },
-      context
-    );
-    const policy = result.data as { sessionId?: unknown; csrfDigest?: unknown; absoluteExpiresAt?: unknown; idleExpiresAt?: unknown } | null;
-    const csrfToken = supabaseCsrfFor(context.sessionId);
-    if (!policy || policy.sessionId !== context.sessionId || policy.csrfDigest !== sha256(csrfToken) || typeof policy.absoluteExpiresAt !== "string" || typeof policy.idleExpiresAt !== "string") return null;
-    return { id: context.sessionId, csrfToken, absoluteExpiresAt: policy.absoluteExpiresAt, idleExpiresAt: policy.idleExpiresAt };
-  } catch { return null; }
+  return getLocalAdminSession(options);
 }
 
 function storedSessionIsValid(session: StoredSession, digest: string, credentialVersion: string, now: number): boolean {
@@ -225,33 +130,9 @@ export function isStoredSessionValidForToken(session: StoredSession, token: stri
 }
 
 export async function revokeAdminSession(): Promise<void> {
-  if (getStorageDriver() === "local-json") {
-    try { securityStore.mutateSecurity((state) => { delete state.activeSession; }); } catch { /* fail closed */ }
-    (await cookies()).set(adminCookieName(), "", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/", maxAge: 0 });
-    return;
-  }
-  const client = await createUserSupabaseClient();
-  let context: SupabaseAdminContext | undefined;
-  let guardRevoked = false;
-  let authRevoked = false;
-
-  try { context = await verifiedSupabaseAdminContext(client); } catch { /* still attempt provider sign-out */ }
-  if (context) {
-    try {
-      await supabaseSessionPolicyRpc("revoke_admin_session", {}, context);
-      guardRevoked = true;
-    } catch { /* the live Auth session check below is an independent boundary */ }
-  }
-
-  try {
-    const result = await client.auth.signOut({ scope: "global" });
-    authRevoked = !result.error;
-  } catch { /* local cookie/session cleanup is still required below */ }
-
-  if (!authRevoked) {
-    await client.auth.signOut({ scope: "local" }).catch(() => undefined);
-  }
-  // Either the ClassStatus guard or the Supabase Auth session must be revoked.
-  // The live-session database check makes each one independently fail closed.
-  if (!guardRevoked && !authRevoked) throw new Error("ADMIN_AUTH_UNAVAILABLE");
+  try { securityStore.mutateSecurity((state) => { delete state.activeSession; }); } catch { /* fail closed */ }
+  (await cookies()).set(adminCookieName(), "", {
+    httpOnly: true, secure: getPublicOrigin().startsWith("https:"),
+    sameSite: "strict", path: "/", maxAge: 0,
+  });
 }

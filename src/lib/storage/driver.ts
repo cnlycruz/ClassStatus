@@ -1,39 +1,22 @@
 import type { DeploymentNamespace } from "./contracts";
 
-export type StorageDriver = "local-json" | "supabase";
+export type StorageDriver = "local-json";
 
-function isVercelRuntime(): boolean {
-  return process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV);
-}
-
+// Stale hosted settings must fail closed rather than redirect writes silently.
 export function getStorageDriver(): StorageDriver {
-  const configured = process.env.CLASSSTATUS_STORAGE_DRIVER?.trim();
-  if (isVercelRuntime()) {
-    if (configured !== "supabase") throw new Error("ADMIN_STORAGE_UNAVAILABLE");
-    return "supabase";
-  }
-  if (!configured || configured === "local-json") return "local-json";
-  if (configured === "supabase") return "supabase";
-  throw new Error("ADMIN_STORAGE_UNAVAILABLE");
+  const value = process.env.CLASSSTATUS_STORAGE_DRIVER?.trim();
+  if (value && value !== "local-json") throw new Error("ADMIN_STORAGE_UNAVAILABLE");
+  return "local-json";
 }
 
+// Preview and production are historical internal data partition labels only.
 export function getDeploymentNamespace(): DeploymentNamespace {
-  if (isVercelRuntime()) {
-    if (process.env.VERCEL_ENV === "production") return "production";
-    if (process.env.VERCEL_ENV === "preview") return "preview";
-    throw new Error("ADMIN_STORAGE_UNAVAILABLE");
-  }
-  const configured = process.env.CLASSSTATUS_SUPABASE_NAMESPACE?.trim();
-  if (configured === "preview" || configured === "production") return configured;
+  const value = process.env.CLASSSTATUS_LOCAL_NAMESPACE?.trim();
+  if (!value || value === "preview") return "preview";
+  if (value === "production") return "production";
   throw new Error("ADMIN_STORAGE_UNAVAILABLE");
 }
 
 export function assertLocalJsonAvailable(): void {
-  if (getStorageDriver() !== "local-json" || isVercelRuntime()) {
-    throw new Error("ADMIN_STORAGE_UNAVAILABLE");
-  }
-}
-
-export function isSupabaseStorage(): boolean {
-  return getStorageDriver() === "supabase";
+  getStorageDriver();
 }

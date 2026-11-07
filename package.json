@@ -27,8 +27,6 @@
     "admin:hash-password": "node scripts/hash-admin-password.mjs"
   },
   "dependencies": {
-    "@supabase/ssr": "0.12.4",
-    "@supabase/supabase-js": "2.112.3",
     "argon2": "^0.45.1",
     "cheerio": "^1.0.0",
     "clsx": "^2.1.1",
@@ -42,7 +40,6 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.3.14",
     "@eslint/eslintrc": "^3.3.6",
     "@types/node": "^22.13.4",
     "@types/proper-lockfile": "^4.1.4",
@@ -53,7 +50,6 @@
     "eslint": "^9.20.1",
     "eslint-config-next": "^15.1.7",
     "postcss": "8.5.26",
-    "supabase": "^2.116.0",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",

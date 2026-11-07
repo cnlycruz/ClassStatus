@@ -1,27 +1,16 @@
-# ClassStatus NCR
+# ClassStatus NCR — Local Development
 
-ClassStatus is an independent, near-live class-suspension tracker for Metro Manila. It helps students, families, and educators check evidence-backed advisories across all 17 NCR local government units (LGUs) while keeping sources, timing, scope, and uncertainty visible.
+ClassStatus is an independent class-suspension tracker for Metro Manila. It covers all 17 NCR LGUs, school search, evidence-backed statuses and collector diagnostics.
 
-> **Disclaimer:** ClassStatus is an independent project. It is not operated by, affiliated with, or endorsed by any Philippine government agency or local government unit.
+**This branch is a local development environment, not a live public class-suspension service.** Official announcements from schools, LGUs and education authorities remain the source of truth.
 
-Official announcements from the relevant LGU, school, or education authority remain the source of truth.
-
-## Core features
-
-- Interactive, keyboard-accessible SVG map for all 17 NCR LGUs, with one logical status for Caloocan's two geographic areas.
-- Near-live dashboard updates with conservative, fail-closed status handling and visible source evidence.
-- Map and list views, status filters, LGU details, and search across 49 school/campus records.
-- Light and dark themes, responsive layouts, installable PWA support, and Web Push alert controls.
-- A protected collector/admin surface and local JSON or hosted Supabase storage adapters.
-
-See [Architecture](docs/ARCHITECTURE.md) for a public-safe technical overview and [Third-party notices](THIRD_PARTY_NOTICES.md) for data and font attribution.
-
-## Prerequisites
+## Requirements
 
 - Node.js 22.x
-- npm 10.x (the repository records the tested package-manager version)
+- npm 10.x
+- No Vercel, cloud database, hosting account or cloud scheduler required
 
-## Local setup
+## Start on your computer
 
 ```bash
 git clone https://github.com/cnlycruz/ClassStatus.git
@@ -29,36 +18,43 @@ cd ClassStatus
 npm ci
 ```
 
-Copy `.env.example` to `.env.local`, keep the default `local-json` storage driver, and fill only the variables needed for your local workflow. Never commit `.env.local` or real credentials.
-
-Start the development server:
+Copy `.env.example` to `.env.local` and leave `CLASSSTATUS_STORAGE_DRIVER=local-json`. Then:
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Generated local state is written to `CLASSSTATUS_DATA_DIR` (default: `./data`) and is ignored by Git.
+Open **http://localhost:3000**.
 
-## Development commands
+Windows users can also launch the existing `run-local.ps1` script. Generated local JSON state is written to `CLASSSTATUS_DATA_DIR` (default `./data`) and ignored by Git. If you previously used a cloud-backed `.env.local`, replace it with the local template; do not copy its secrets.
+
+### Local admin
+
+The protected `/collector` console is optional and stays authenticated. To configure it, generate the Argon2 password hash with `npm run admin:hash-password` and set `CLASSSTATUS_ADMIN_USERNAME`, `CLASSSTATUS_ADMIN_PASSWORD_HASH`, and a Base64-encoded random 32-byte-or-longer `CLASSSTATUS_SESSION_SECRET` in `.env.local`.
+
+### Collector
 
 ```bash
-npm run dev                 # development server
-npm run collect             # run eligible local collector adapters
-npx tsc --noEmit            # TypeScript validation
-npm run lint                # ESLint
-npm test                    # Vitest test suite
-npm run build               # production build
-npm start                   # serve the production build
+npm run collect
 ```
 
-Administrator access, hosted storage, scheduled collection, and Web Push are optional. Their variables are grouped and documented with placeholders in [.env.example](.env.example). Do not use real production values in issues, pull requests, fixtures, or screenshots.
+Collection is **manual**, unless you later configure a separate local scheduler. It reads only the operational GMA and Rappler sources, makes real external HTTP requests, parses candidate articles, and stores evidence-backed data in local files. It rejects ambiguous, stale or unsupported claims rather than inventing class suspensions. Stopped collection does not imply classes are ongoing.
 
-## Contributing and security
+### Development checks
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. Report suspected vulnerabilities privately using the instructions in [SECURITY.md](SECURITY.md); do not open a public security issue.
+```bash
+npx tsc --noEmit
+npm run lint
+npm test
+npm run build
+```
 
-Data corrections must include a verifiable official source. ClassStatus intentionally does not infer or fabricate suspension declarations.
+### Limitations
 
-## License and attribution
+- Local JSON storage and local admin authentication are not designed for a public multi-user deployment.
+- Never expose the local development server to the public Internet.
+- Browser push notifications are optional and require a supported secure browser context, active subscriptions and VAPID settings.
+- Share/export previews from this branch are development artifacts, not authoritative announcements.
+- Cloud deployment/DB migrations were removed from active source, but historical decisions remain in Git history.
 
-ClassStatus source code is available under the [MIT License](LICENSE). Geographic data, fonts, and other third-party material retain their own notices and licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Read [PRODUCT.md](PRODUCT.md), [AGENTS.md](AGENTS.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

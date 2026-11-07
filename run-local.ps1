@@ -19,8 +19,8 @@ if ($scriptDir) {
 
 # 1. Verify dependencies
 if (-not (Test-Path "node_modules")) {
-    Write-Host "[1/3] node_modules not found. Installing dependencies with npm install..." -ForegroundColor Yellow
-    npm install
+    Write-Host "[1/3] node_modules not found. Installing dependencies with npm ci..." -ForegroundColor Yellow
+    npm ci
 } else {
     Write-Host "[1/3] Dependencies verified." -ForegroundColor Green
 }

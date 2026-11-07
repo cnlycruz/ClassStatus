@@ -1,50 +1,24 @@
-# Architecture
+# ClassStatus local architecture
 
-This document provides a public-safe overview of ClassStatus. No live project identifiers, administrator identities, private endpoints, credentials, or deployment-specific values belong here.
-
-## System overview
-
-ClassStatus is a Next.js 15 App Router application using React 19 and TypeScript. Its main parts are:
-
-- **Public web application:** the map-first dashboard, list view, LGU detail panels, school search, source pages, share output, themes, and alert controls.
-- **Collector pipeline:** approved source adapters fetch and parse notices, normalize explicit facts, validate evidence, and pass eligible records through conflict and publication safeguards.
-- **Storage boundary:** local development can use generated JSON files; hosted environments use Supabase/Postgres through server-side adapters and narrowly scoped RPCs.
-- **Notifications:** subscription and delivery logic is server-side. The browser receives only the public Web Push key and projected public data.
-
-The public application reads a deliberately limited projection of current suspension data. Private collector, audit, administrative, and proof material must not be returned by public routes.
-
-## Data and trust flow
+Current architecture: Next.js 15 App Router, React 19, TypeScript, Tailwind CSS, Node.js 22 and JSON files.
 
 ```text
-approved source -> fetch/parse -> normalize -> validate/conflict checks
-                -> storage/publication boundary -> public projection -> dashboard
+GMA / Rappler approved sources
+    -> local Node.js collector (manual invocation)
+    -> fetch and parse
+    -> evidence/scope validation and conflict safeguards
+    -> local JSON persistence
+    -> protected Next.js API routes
+    -> NCR dashboard, status history and school finder
 ```
 
-ClassStatus does not infer a suspension from weather, social discussion, or incomplete reporting. Ambiguous, stale, conflicting, malformed, or unprovenanced notices remain uncertain or fail closed. Dates and freshness use `Asia/Manila` semantics.
+- Site and local admin API run at localhost:3000.
+- Files are saved under `CLASSSTATUS_DATA_DIR`, including collector logs, local notifications, audit and status history.
+- Admin login uses locally configured Argon2 credentials, a private cookie, CSRF validation, bounded request handling, and local session storage.
+- Push notification subscriptions/delivery records are local-only, with optional VAPID configuration.
+- No external database, hosted cron, or platform SDK is required for local development.
+- Only operational media sources are polled; other official-source adapters remain disabled until properly implemented.
 
-The public model contains exactly 17 logical NCR LGUs. Caloocan has two map polygons but one status identity. Geometry provenance and transformation details are recorded in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+**The local build is not an Internet-facing production system.** The collector is intentionally conservative: absent announcements are not proof that classes continue. Preserve evidence, freshness and uncertainty.
 
-## Browser architecture
-
-The homepage hydrates the interactive controls and regularly refreshes public data without rendering unchanged results. Refresh is visibility-aware and single-flight. Map pan and zoom use native SVG transforms on the map-content `<g>` element, scheduled with `requestAnimationFrame`, to keep boundaries sharp across desktop and touch browsers.
-
-The service worker caches only appropriate static/navigation assets. `/api/`, `/collector/`, and `/auth/` remain network-only so private or mutable responses are not persisted by the PWA cache.
-
-## Environments and configuration
-
-Local development defaults to the `local-json` storage adapter and writes generated state beneath `CLASSSTATUS_DATA_DIR`. Hosted deployments select the Supabase adapter and provide server-only configuration through their environment manager. Web Push and local administrator access are optional configuration groups.
-
-See [.env.example](../.env.example) for variable names and safe placeholders. Never place real values in repository files, issues, fixtures, or screenshots. Deployment-specific configuration belongs in the hosting and database providers, not in this repository.
-
-Database and authorization contracts evolve through forward migrations in `supabase/migrations`. For operational work, the current migrations and implementation are authoritative; public documentation intentionally omits deploy-time identifiers and procedures.
-
-## Important boundaries
-
-- Browser bundles must not receive server-only credentials or storage clients intended for privileged operations.
-- Hosted runtime code must preserve the existing least-privilege RPC and namespace boundaries.
-- Collector execution must preserve leases, proof checks, provenance, conflict handling, and publication safeguards.
-- Authentication, CSRF/origin checks, request limits, and Web Push recipient isolation are security boundaries, not optional application conveniences.
-- Anonymous Web Push registration uses Vercel's platform-derived client address only after normalization and HMAC hashing, then consumes atomic burst/daily counters through a private Supabase function. Migration `20260914090000_rate_limit_push_registration.sql` and the matching route code were verified live on 2026-09-14; the migration must remain deployed before that route version.
-- Administrator RPCs also require the JWT's matching live `auth.sessions` row. Starting a session guard cannot revive a revoked, expired, or replaced login or extend that login's original lifetime; a fresh sign-in creates a new Auth session. These guarantees require migration `20260905161059_prevent_admin_session_reactivation.sql` to be applied.
-
-For product behavior and accessibility requirements, see [PRODUCT.md](../PRODUCT.md). For current engineering state and historical constraints, see [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) and [ENGINEERING_HISTORY.md](ENGINEERING_HISTORY.md).
+Historical deployment architecture is preserved in the repository's Git history and older engineering notes.

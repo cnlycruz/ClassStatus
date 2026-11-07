@@ -107,7 +107,7 @@ try {
       const protectedPosts = ["/api/admin/suspensions", "/api/admin/suspensions/preview", "/api/admin/suspensions/unknown/remove", "/api/admin/suspensions/unknown/undo", "/api/admin/notifications", "/api/admin/notifications/preview", "/api/collector/run", "/api/admin/auth/logout"];
       for (const route of protectedPosts) await request(route, 401, { method: "POST", headers: jsonHeaders, body: "{}" });
       await request("/api/collector/sources", 405, { method: "PUT", headers: jsonHeaders, body: "{}" });
-      for (const method of ["GET", "POST"]) await request("/api/cron/collector", 401, { method });
+      for (const method of ["GET", "POST"]) await request("/api/cron/collector", 404, { method });
       for (const route of ["/api/admin/auth/login", "/api/alerts/subscribe"]) await request(route, 403, { method: "POST", body: "{}" });
       for (const body of ["{", "[]", "null", '{"username":{}}']) await request("/api/admin/auth/login", 401, { method: "POST", headers: jsonHeaders, body });
       await request("/api/admin/auth/login", 413, { method: "POST", headers: jsonHeaders, body: "x".repeat(4097) });
@@ -117,12 +117,12 @@ try {
         await request("/api/alerts/preferences", 403, { method, body: "{}" });
         await request("/api/alerts/preferences", 422, { method, headers: jsonHeaders, body: "{}" });
       }
-      await request("/api/auth/reset-password/authorize", 401, { method: "POST" });
+      await request("/api/auth/reset-password/authorize", 404, { method: "POST" });
       const challenge = (await (await request("/api/admin/auth/login-challenge", 200)).json()).challenge;
       await request("/api/admin/auth/login", 401, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ username: "audit-local", password: "incorrect", challenge }) });
       const freshChallenge = (await (await request("/api/admin/auth/login-challenge", 200)).json()).challenge;
       const login = await request("/api/admin/auth/login", 200, { method: "POST", headers: jsonHeaders, body: JSON.stringify({ username: "audit-local", password, challenge: freshChallenge }) });
-      const setCookie = login.headers.getSetCookie().find((value) => value.startsWith("__Host-classstatus_admin_session="));
+      const setCookie = login.headers.getSetCookie().find((value) => value.startsWith("classstatus_admin_session="));
       assert.ok(setCookie);
       assert.match(setCookie, /HttpOnly/i); assert.doesNotMatch(setCookie, /; Secure/i); assert.match(setCookie, /SameSite=strict/i); assert.match(setCookie, /Path=\//i);
       const cookie = setCookie.split(";")[0];

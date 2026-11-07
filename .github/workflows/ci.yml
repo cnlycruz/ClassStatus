@@ -30,4 +30,5 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - run: node scripts/security-local-smoke.mjs
       - run: git diff --check

@@ -112,7 +112,8 @@ try {
       for (const body of ["{", "[]", "null", '{"username":{}}']) await request("/api/admin/auth/login", 401, { method: "POST", headers: jsonHeaders, body });
       await request("/api/admin/auth/login", 413, { method: "POST", headers: jsonHeaders, body: "x".repeat(4097) });
       await request("/api/admin/auth/login", 403, { method: "POST", headers: { ...jsonHeaders, "Content-Type": "text/plain" }, body: "{}" });
-      for (const body of ["{", "[]", "null", "{}", "x".repeat(8193)]) await request("/api/alerts/subscribe", 422, { method: "POST", headers: jsonHeaders, body });
+      for (const body of ["{", "[]", "null", "{}"]) await request("/api/alerts/subscribe", 422, { method: "POST", headers: jsonHeaders, body });
+      await request("/api/alerts/subscribe", 413, { method: "POST", headers: jsonHeaders, body: "x".repeat(8193) });
       for (const method of ["PATCH", "DELETE"]) {
         await request("/api/alerts/preferences", 403, { method, body: "{}" });
         await request("/api/alerts/preferences", 422, { method, headers: jsonHeaders, body: "{}" });

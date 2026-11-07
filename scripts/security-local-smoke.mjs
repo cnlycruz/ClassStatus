@@ -17,7 +17,7 @@ const origin = "http://localhost:4173";
 const env = { ...process.env };
 // Defined empty values prevent Next's dotenv loader from importing real values.
 for (const name of Object.keys(env)) {
-  if (/^(CLASSSTATUS_|LEGACY_DB_|LEGACY_HOST|NEXT_PUBLIC_)/.test(name)) env[name] = "";
+  if (/^(CLASSSTATUS_|SUPABASE_|VERCEL|NEXT_PUBLIC_)/.test(name)) env[name] = "";
 }
 for (const file of fs.readdirSync(root).filter((name) => /^\.env(?:\.|$)/.test(name))) {
   for (const line of fs.readFileSync(path.join(root, file), "utf8").split(/\r?\n/)) {
@@ -141,7 +141,7 @@ try {
         const response = await request(route, route.includes("share") ? 503 : 500);
         const body = await response.text();
         assert.ok(!body.includes(tempRoot));
-        assert.doesNotMatch(body, /SyntaxError|at .*\.(?:js|ts):|node_modules|LEGACY_DB_|SELECT /);
+        assert.doesNotMatch(body, /SyntaxError|at .*\.(?:js|ts):|node_modules|SUPABASE_|SELECT /);
       }
       console.log(`Local production HTTP checks: ${checks} passed, 0 failed. Synthetic local session revoked; no collector or push send invoked.`);
     }
